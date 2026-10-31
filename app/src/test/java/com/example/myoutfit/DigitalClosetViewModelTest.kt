@@ -69,6 +69,24 @@ class DigitalClosetViewModelTest {
         assertEquals(1, state.items.size)
         assertEquals(item1, state.items.first())
     }
+
+    @Test
+    fun setItemToEdit_updatesStateCorrectly() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+
+        val item = ClothingItem(id = 1, imagePath = "path1", category = ClothingCategory.T_SHIRTS, color = "Blanco", styleTags = listOf("Casual"), description = "Camiseta básica")
+        fakeRepository.setItems(listOf(item))
+
+        viewModel.setItemToEdit(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(item, state.itemToEdit)
+
+        viewModel.setItemToEdit(null)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(null, viewModel.uiState.value.itemToEdit)
+    }
 }
 
 class FakeClothingRepository : ClothingRepository {
@@ -96,7 +114,9 @@ class FakeClothingRepository : ClothingRepository {
         return item.id
     }
 
-    override suspend fun updateClothingItem(item: ClothingItem) {}
+    override suspend fun updateClothingItem(item: ClothingItem) {
+        _items.value = _items.value.map { if (it.id == item.id) item else it }
+    }
 
     override suspend fun deleteClothingItem(item: ClothingItem) {
         _items.value = _items.value.filter { it.id != item.id }

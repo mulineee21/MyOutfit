@@ -167,4 +167,87 @@ class OutfitRecommendationEngineTest {
         assertEquals("Streetwear", result.styleTag)
         assertTrue(result.matchPercentage >= 80)
     }
+
+    @Test
+    fun generateRecommendation_withDress_returnsValidOutfit() {
+        val dress = ClothingItem(
+            id = 1,
+            imagePath = "dress.jpg",
+            category = ClothingCategory.DRESSES,
+            color = "Rojo",
+            styleTags = listOf("Elegante"),
+            description = "Vestido rojo de fiesta"
+        )
+        val footwear = ClothingItem(
+            id = 2,
+            imagePath = "shoes.jpg",
+            category = ClothingCategory.FOOTWEAR,
+            color = "Negro",
+            styleTags = listOf("Elegante"),
+            description = "Tacones negros"
+        )
+
+        val result = engine.generateRecommendation(
+            clothingItems = listOf(dress, footwear),
+            userPreferences = UserPreferences(),
+            requestedStyle = "Elegante"
+        )
+
+        assertTrue(result.isSufficientItems)
+        assertTrue(result.items.contains(dress))
+        assertTrue(result.items.contains(footwear))
+    }
+
+    @Test
+    fun generateRecommendation_withTShirtAndSkirt_returnsValidOutfit() {
+        val tshirt = ClothingItem(
+            id = 1,
+            imagePath = "tshirt.jpg",
+            category = ClothingCategory.T_SHIRTS,
+            color = "Blanco",
+            styleTags = listOf("Casual"),
+            description = "Camiseta básica blanca"
+        )
+        val skirt = ClothingItem(
+            id = 2,
+            imagePath = "skirt.jpg",
+            category = ClothingCategory.SKIRTS,
+            color = "Azul",
+            styleTags = listOf("Casual"),
+            description = "Falda vaquera"
+        )
+
+        val result = engine.generateRecommendation(
+            clothingItems = listOf(tshirt, skirt),
+            userPreferences = UserPreferences(),
+            requestedStyle = "Casual"
+        )
+
+        assertTrue(result.isSufficientItems)
+        assertTrue(result.items.contains(tshirt))
+        assertTrue(result.items.contains(skirt))
+    }
+
+    @Test
+    fun clothingCategory_classificationProperties_areCorrect() {
+        assertTrue(ClothingCategory.T_SHIRTS.isTop)
+        assertTrue(ClothingCategory.SHIRTS.isTop)
+        assertTrue(ClothingCategory.SWEATERS.isTop)
+        assertTrue(ClothingCategory.TOPS.isTop)
+
+        assertTrue(ClothingCategory.PANTS.isBottom)
+        assertTrue(ClothingCategory.JEANS.isBottom)
+        assertTrue(ClothingCategory.SKIRTS.isBottom)
+        assertTrue(ClothingCategory.SHORTS.isBottom)
+        assertTrue(ClothingCategory.BOTTOMS.isBottom)
+
+        assertTrue(ClothingCategory.DRESSES.isOnePiece)
+        assertTrue(ClothingCategory.JUMPSUITS.isOnePiece)
+
+        assertTrue(ClothingCategory.FOOTWEAR.isFootwear)
+        assertTrue(ClothingCategory.OUTERWEAR.isOuterwear)
+
+        assertTrue(ClothingCategory.BAGS.isAccessory)
+        assertTrue(ClothingCategory.ACCESSORIES.isAccessory)
+    }
 }

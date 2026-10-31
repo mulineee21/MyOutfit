@@ -121,6 +121,47 @@ class RecommendationViewModelTest {
         assertEquals(5.0f, loggedList.first().rating, 0.01f)
         assertEquals("Excelente look", loggedList.first().notes)
     }
+
+    @Test
+    fun geminiInputs_updateUiStateProperly() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.setActivityPlan("Ir al gym y luego oficina")
+        viewModel.setDesiredVibe("Deportivo pero formal")
+        viewModel.setUseInspirations(false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("Ir al gym y luego oficina", state.activityPlan)
+        assertEquals("Deportivo pero formal", state.desiredVibe)
+        assertEquals(false, state.useInspirations)
+    }
+
+    @Test
+    fun saveGeminiApiKey_updatesPreferencesAndState() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.saveGeminiApiKey("test-gemini-key-12345")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("test-gemini-key-12345", state.userPreferences.geminiApiKey)
+        assertEquals(false, state.showApiKeyDialog)
+    }
+
+    @Test
+    fun generateGeminiRecommendation_withoutApiKey_opensApiKeyDialog() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.generateGeminiRecommendation()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.showApiKeyDialog)
+    }
 }
 
 class FakeUserPreferencesRepository : UserPreferencesRepository {
@@ -142,6 +183,10 @@ class FakeUserPreferencesRepository : UserPreferencesRepository {
 
     override suspend fun updateSelectedTheme(theme: String) {
         _prefs.value = _prefs.value.copy(selectedTheme = theme)
+    }
+
+    override suspend fun updateGeminiApiKey(apiKey: String) {
+        _prefs.value = _prefs.value.copy(geminiApiKey = apiKey)
     }
 }
 

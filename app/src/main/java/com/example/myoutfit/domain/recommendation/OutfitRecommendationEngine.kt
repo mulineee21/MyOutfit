@@ -14,7 +14,9 @@ data class RecommendationResult(
     val matchPercentage: Int,
     val matchReason: String,
     val isSufficientItems: Boolean = true,
-    val missingCategories: List<ClothingCategory> = emptyList()
+    val missingCategories: List<ClothingCategory> = emptyList(),
+    val isAiGenerated: Boolean = false,
+    val styleAdvice: String? = null
 )
 
 class OutfitRecommendationEngine {
@@ -30,22 +32,28 @@ class OutfitRecommendationEngine {
         requestedStyle: String? = null,
         seed: Long = System.currentTimeMillis()
     ): RecommendationResult {
-        val tops = clothingItems.filter { it.category == ClothingCategory.TOPS }
-        val bottoms = clothingItems.filter { it.category == ClothingCategory.BOTTOMS }
-        val footwear = clothingItems.filter { it.category == ClothingCategory.FOOTWEAR }
-        val outerwear = clothingItems.filter { it.category == ClothingCategory.OUTERWEAR }
-        val accessories = clothingItems.filter { it.category == ClothingCategory.ACCESSORIES }
+        val tops = clothingItems.filter { it.category.isTop }
+        val bottoms = clothingItems.filter { it.category.isBottom }
+        val onePieces = clothingItems.filter { it.category.isOnePiece }
+        val footwear = clothingItems.filter { it.category.isFootwear }
+        val outerwear = clothingItems.filter { it.category.isOuterwear }
+        val accessories = clothingItems.filter { it.category.isAccessory }
+
+        val canMakeTopBottomOutfit = tops.isNotEmpty() && bottoms.isNotEmpty()
+        val canMakeOnePieceOutfit = onePieces.isNotEmpty()
 
         val missingCategories = mutableListOf<ClothingCategory>()
-        if (tops.isEmpty()) missingCategories.add(ClothingCategory.TOPS)
-        if (bottoms.isEmpty()) missingCategories.add(ClothingCategory.BOTTOMS)
+        if (!canMakeOnePieceOutfit) {
+            if (tops.isEmpty()) missingCategories.add(ClothingCategory.TOPS)
+            if (bottoms.isEmpty()) missingCategories.add(ClothingCategory.BOTTOMS)
+        }
 
-        if (missingCategories.isNotEmpty()) {
+        if (!canMakeTopBottomOutfit && !canMakeOnePieceOutfit) {
             val missingText = missingCategories.joinToString(", ") { cat ->
                 when (cat) {
-                    ClothingCategory.TOPS -> "Prendas superiores (Tops)"
-                    ClothingCategory.BOTTOMS -> "Prendas inferiores (Pantalones/Faldas)"
-                    else -> cat.name
+                    ClothingCategory.TOPS -> "Prendas superiores (Camisetas, Camisas, Tops...)"
+                    ClothingCategory.BOTTOMS -> "Prendas inferiores (Pantalones, Faldas, Shorts...)"
+                    else -> cat.displayName
                 }
             }
             return RecommendationResult(
@@ -53,7 +61,7 @@ class OutfitRecommendationEngine {
                 items = emptyList(),
                 styleTag = requestedStyle ?: "General",
                 matchPercentage = 0,
-                matchReason = "Para sugerir outfits, agrega al menos $missingText a tu armario.",
+                matchReason = "Para sugerir outfits, agrega al menos $missingText o un Vestido a tu armario.",
                 isSufficientItems = false,
                 missingCategories = missingCategories
             )
@@ -77,19 +85,45 @@ class OutfitRecommendationEngine {
         val rng = Random(seed)
 
         // Sample combinations of available items
-        val shuffledTops = tops.shuffled(rng)
-        val shuffledBottoms = bottoms.shuffled(rng)
         val shuffledFootwear = footwear.shuffled(rng)
         val shuffledOuterwear = outerwear.shuffled(rng)
         val shuffledAccessories = accessories.shuffled(rng)
 
-        for (top in shuffledTops.take(6)) {
-            for (bottom in shuffledBottoms.take(6)) {
+        // Combinations with Tops and Bottoms
+        if (canMakeTopBottomOutfit) {
+            val shuffledTops = tops.shuffled(rng)
+            val shuffledBottoms = bottoms.shuffled(rng)
+
+            for (top in shuffledTops.take(6)) {
+                for (bottom in shuffledBottoms.take(6)) {
+                    val footwearItem = shuffledFootwear.firstOrNull()
+                    val outerwearItem = if (shuffledOuterwear.isNotEmpty() && rng.nextBoolean()) shuffledOuterwear.firstOrNull() else null
+                    val accessoryItem = if (shuffledAccessories.isNotEmpty() && rng.nextBoolean()) shuffledAccessories.firstOrNull() else null
+
+                    val combinationItems = listOfNotNull(top, bottom, footwearItem, outerwearItem, accessoryItem)
+
+                    val score = calculateScore(
+                        items = combinationItems,
+                        targetStyle = targetStyle,
+                        userFavoriteStyles = userPreferences.favoriteStyles,
+                        inspirationTags = inspirationTags
+                    )
+
+                    candidates.add(ScoredCombination(combinationItems, score))
+                }
+            }
+        }
+
+        // Combinations with One-Piece garments (Dresses, Jumpsuits)
+        if (canMakeOnePieceOutfit) {
+            val shuffledOnePieces = onePieces.shuffled(rng)
+
+            for (onePiece in shuffledOnePieces.take(6)) {
                 val footwearItem = shuffledFootwear.firstOrNull()
                 val outerwearItem = if (shuffledOuterwear.isNotEmpty() && rng.nextBoolean()) shuffledOuterwear.firstOrNull() else null
                 val accessoryItem = if (shuffledAccessories.isNotEmpty() && rng.nextBoolean()) shuffledAccessories.firstOrNull() else null
 
-                val combinationItems = listOfNotNull(top, bottom, footwearItem, outerwearItem, accessoryItem)
+                val combinationItems = listOfNotNull(onePiece, footwearItem, outerwearItem, accessoryItem)
 
                 val score = calculateScore(
                     items = combinationItems,
@@ -194,9 +228,9 @@ class OutfitRecommendationEngine {
         }
 
         // Item completeness bonus
-        if (items.any { it.category == ClothingCategory.FOOTWEAR }) score += 10
-        if (items.any { it.category == ClothingCategory.OUTERWEAR }) score += 5
-        if (items.any { it.category == ClothingCategory.ACCESSORIES }) score += 5
+        if (items.any { it.category.isFootwear }) score += 10
+        if (items.any { it.category.isOuterwear }) score += 5
+        if (items.any { it.category.isAccessory }) score += 5
 
         return score
     }

@@ -22,6 +22,7 @@ data class DigitalClosetUiState(
     val searchQuery: String = "",
     val isAddDialogOpen: Boolean = false,
     val itemToDelete: ClothingItem? = null,
+    val itemToEdit: ClothingItem? = null,
     val userMessage: String? = null
 )
 
@@ -33,14 +34,23 @@ class DigitalClosetViewModel(
     private val _searchQuery = MutableStateFlow("")
     private val _isAddDialogOpen = MutableStateFlow(false)
     private val _itemToDelete = MutableStateFlow<ClothingItem?>(null)
+    private val _itemToEdit = MutableStateFlow<ClothingItem?>(null)
     private val _userMessage = MutableStateFlow<String?>(null)
+
+    private data class DialogState(
+        val isAddOpen: Boolean,
+        val itemToDelete: ClothingItem?,
+        val itemToEdit: ClothingItem?,
+        val message: String?
+    )
 
     private val _dialogState = combine(
         _isAddDialogOpen,
         _itemToDelete,
+        _itemToEdit,
         _userMessage
-    ) { isAddOpen, deleteItem, message ->
-        Triple(isAddOpen, deleteItem, message)
+    ) { isAddOpen, deleteItem, editItem, message ->
+        DialogState(isAddOpen, deleteItem, editItem, message)
     }
 
     val uiState: StateFlow<DigitalClosetUiState> = combine(
@@ -48,7 +58,7 @@ class DigitalClosetViewModel(
         _selectedCategory,
         _searchQuery,
         _dialogState
-    ) { allItems: List<ClothingItem>, category: ClothingCategory?, query: String, (isAddOpen, deleteItem, message) ->
+    ) { allItems: List<ClothingItem>, category: ClothingCategory?, query: String, dialogState ->
         val filteredItems = allItems.filter { item ->
             val matchesCategory = (category == null || item.category == category)
             val matchesQuery = query.isBlank() ||
@@ -62,9 +72,10 @@ class DigitalClosetViewModel(
             items = filteredItems,
             selectedCategory = category,
             searchQuery = query,
-            isAddDialogOpen = isAddOpen,
-            itemToDelete = deleteItem,
-            userMessage = message
+            isAddDialogOpen = dialogState.isAddOpen,
+            itemToDelete = dialogState.itemToDelete,
+            itemToEdit = dialogState.itemToEdit,
+            userMessage = dialogState.message
         )
     }.stateIn(
         scope = viewModelScope,
@@ -86,6 +97,10 @@ class DigitalClosetViewModel(
 
     fun setItemToDelete(item: ClothingItem?) {
         _itemToDelete.value = item
+    }
+
+    fun setItemToEdit(item: ClothingItem?) {
+        _itemToEdit.value = item
     }
 
     fun addClothingItem(
@@ -119,6 +134,45 @@ class DigitalClosetViewModel(
             clothingRepository.insertClothingItem(newItem)
             _isAddDialogOpen.value = false
             _userMessage.value = "Prenda añadida correctamente"
+        }
+    }
+
+    fun updateClothingItem(
+        context: Context,
+        originalItem: ClothingItem,
+        newImageUri: Uri?,
+        category: ClothingCategory,
+        color: String,
+        styleTags: List<String>,
+        description: String
+    ) {
+        viewModelScope.launch {
+            var finalImagePath = originalItem.imagePath
+
+            if (newImageUri != null) {
+                val savedPath = ImageStorageManager.saveUri(context, newImageUri, "clothing")
+                if (!savedPath.isNullOrBlank()) {
+                    if (originalItem.imagePath != savedPath && originalItem.imagePath.isNotBlank()) {
+                        ImageStorageManager.deleteImage(originalItem.imagePath)
+                    }
+                    finalImagePath = savedPath
+                } else {
+                    _userMessage.value = "Error al actualizar la imagen de la prenda"
+                    return@launch
+                }
+            }
+
+            val updatedItem = originalItem.copy(
+                imagePath = finalImagePath,
+                category = category,
+                color = color.trim(),
+                styleTags = styleTags.map { it.trim() }.filter { it.isNotEmpty() },
+                description = description.trim()
+            )
+
+            clothingRepository.updateClothingItem(updatedItem)
+            _itemToEdit.value = null
+            _userMessage.value = "Prenda actualizada correctamente"
         }
     }
 

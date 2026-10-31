@@ -11,12 +11,21 @@ class ConvertersTest {
 
     @Test
     fun testClothingCategoryConverter() {
-        val category = ClothingCategory.FOOTWEAR
-        val stringVal = converters.fromClothingCategory(category)
-        assertEquals("FOOTWEAR", stringVal)
-
-        val restoredCategory = converters.toClothingCategory(stringVal)
-        assertEquals(ClothingCategory.FOOTWEAR, restoredCategory)
+        val categoriesToTest = listOf(
+            ClothingCategory.T_SHIRTS,
+            ClothingCategory.SHIRTS,
+            ClothingCategory.SKIRTS,
+            ClothingCategory.DRESSES,
+            ClothingCategory.PANTS,
+            ClothingCategory.BAGS,
+            ClothingCategory.FOOTWEAR
+        )
+        for (category in categoriesToTest) {
+            val stringVal = converters.fromClothingCategory(category)
+            assertEquals(category.name, stringVal)
+            val restoredCategory = converters.toClothingCategory(stringVal)
+            assertEquals(category, restoredCategory)
+        }
     }
 
     @Test

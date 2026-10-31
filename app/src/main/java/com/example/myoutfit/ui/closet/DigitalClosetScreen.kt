@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -92,13 +93,7 @@ import com.example.myoutfit.util.UriUtils
 val PRESET_COLORS = listOf("Negro", "Blanco", "Gris", "Rojo", "Azul", "Verde", "Amarillo", "Rosa", "Beige", "Marrón")
 val PRESET_STYLE_TAGS = listOf("Gótico", "Colorido", "Casual", "Formal", "Streetwear", "Vintage", "Elegante", "Deportivo", "Minimalista")
 
-fun ClothingCategory.getDisplayName(): String = when (this) {
-    ClothingCategory.TOPS -> "Tops"
-    ClothingCategory.BOTTOMS -> "Pantalones"
-    ClothingCategory.FOOTWEAR -> "Calzado"
-    ClothingCategory.OUTERWEAR -> "Abrigos"
-    ClothingCategory.ACCESSORIES -> "Accesorios"
-}
+fun ClothingCategory.getDisplayName(): String = this.displayName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -208,6 +203,7 @@ fun DigitalClosetScreen(
                     ) { clothingItem ->
                         ClothingItemCard(
                             item = clothingItem,
+                            onEditClick = { viewModel.setItemToEdit(clothingItem) },
                             onDeleteClick = { viewModel.setItemToDelete(clothingItem) }
                         )
                     }
@@ -222,6 +218,25 @@ fun DigitalClosetScreen(
             onDismiss = { viewModel.setAddDialogOpen(false) },
             onSave = { imageUri, category, color, styleTags, description ->
                 viewModel.addClothingItem(context, imageUri, category, color, styleTags, description)
+            }
+        )
+    }
+
+    // Edit Clothing Dialog
+    uiState.itemToEdit?.let { item ->
+        EditClothingDialog(
+            item = item,
+            onDismiss = { viewModel.setItemToEdit(null) },
+            onSave = { newImageUri, category, color, styleTags, description ->
+                viewModel.updateClothingItem(
+                    context = context,
+                    originalItem = item,
+                    newImageUri = newImageUri,
+                    category = category,
+                    color = color,
+                    styleTags = styleTags,
+                    description = description
+                )
             }
         )
     }
@@ -287,10 +302,12 @@ fun CategorySelectorRow(
 @Composable
 fun ClothingItemCard(
     item: ClothingItem,
+    onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     ElevatedCard(
+        onClick = onEditClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -328,24 +345,46 @@ fun ClothingItemCard(
                     )
                 }
 
-                // Delete button overlay
-                IconButton(
-                    onClick = onDeleteClick,
+                // Edit and Delete buttons overlay
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            shape = CircleShape
-                        )
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Eliminar prenda",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    IconButton(
+                        onClick = onEditClick,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Editar prenda",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Eliminar prenda",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
@@ -482,7 +521,7 @@ fun AddClothingDialog(
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
 
-    var selectedCategory by remember { mutableStateOf(ClothingCategory.TOPS) }
+    var selectedCategory by remember { mutableStateOf(ClothingCategory.T_SHIRTS) }
     var selectedColor by remember { mutableStateOf("") }
     var customColorInput by remember { mutableStateOf("") }
 
@@ -756,6 +795,277 @@ fun AddClothingDialog(
     )
 }
 
+@Composable
+fun EditClothingDialog(
+    item: ClothingItem,
+    onDismiss: () -> Unit,
+    onSave: (
+        newImageUri: Uri?,
+        category: ClothingCategory,
+        color: String,
+        styleTags: List<String>,
+        description: String
+    ) -> Unit
+) {
+    val context = LocalContext.current
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    var selectedCategory by remember { mutableStateOf(item.category) }
+
+    val isExistingColorPreset = PRESET_COLORS.any { it.equals(item.color, ignoreCase = true) }
+    var selectedColor by remember { mutableStateOf(if (isExistingColorPreset) item.color else "") }
+    var customColorInput by remember { mutableStateOf(if (!isExistingColorPreset) item.color else "") }
+
+    val selectedStyleTags = remember { mutableStateListOf<String>().apply { addAll(item.styleTags) } }
+    var customTagInput by remember { mutableStateOf("") }
+
+    var description by remember { mutableStateOf(item.description) }
+
+    // Camera launcher
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && tempCameraUri != null) {
+            selectedImageUri = tempCameraUri
+        }
+    }
+
+    // Gallery launcher
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            selectedImageUri = uri
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Editar Prenda",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Photo Preview
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val modelToLoad: Any = selectedImageUri ?: item.imagePath
+                    AsyncImage(
+                        model = modelToLoad,
+                        contentDescription = "Foto de la prenda",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val uri = UriUtils.createTempImageUri(context)
+                            tempCameraUri = uri
+                            cameraLauncher.launch(uri)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Cámara")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            galleryLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(imageVector = Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Galería")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Category Selection
+                Text(
+                    text = "Categoría",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ClothingCategory.entries.forEach { cat ->
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            label = { Text(cat.getDisplayName()) },
+                            leadingIcon = if (selectedCategory == cat) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Color Selection
+                Text(
+                    text = "Color Principal",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PRESET_COLORS.forEach { colorName ->
+                        FilterChip(
+                            selected = selectedColor.equals(colorName, ignoreCase = true),
+                            onClick = {
+                                selectedColor = if (selectedColor.equals(colorName, ignoreCase = true)) "" else colorName
+                                if (selectedColor.isNotEmpty()) customColorInput = ""
+                            },
+                            label = { Text(colorName) },
+                            leadingIcon = if (selectedColor.equals(colorName, ignoreCase = true)) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = customColorInput,
+                    onValueChange = {
+                        customColorInput = it
+                        if (it.isNotEmpty()) selectedColor = ""
+                    },
+                    label = { Text("O escribe otro color (ej. Turquesa, Borgoña)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Style Tags Selection
+                Text(
+                    text = "Estilos y Ocasiones",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PRESET_STYLE_TAGS.forEach { tag ->
+                        val isSelected = selectedStyleTags.contains(tag)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (isSelected) selectedStyleTags.remove(tag) else selectedStyleTags.add(tag)
+                            },
+                            label = { Text("#$tag") },
+                            leadingIcon = if (isSelected) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 6.dp)
+                ) {
+                    OutlinedTextField(
+                        value = customTagInput,
+                        onValueChange = { customTagInput = it },
+                        label = { Text("Añadir etiqueta de estilo") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            if (customTagInput.isNotBlank() && !selectedStyleTags.contains(customTagInput.trim())) {
+                                selectedStyleTags.add(customTagInput.trim())
+                                customTagInput = ""
+                            }
+                        }
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Añadir etiqueta")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Description Input
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Descripción o notas") },
+                    placeholder = { Text("ej. Camiseta de algodón, fit oversized") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalColor = selectedColor.ifEmpty { customColorInput }
+                    onSave(
+                        selectedImageUri,
+                        selectedCategory,
+                        finalColor,
+                        selectedStyleTags.toList(),
+                        description
+                    )
+                }
+            ) {
+                Text("Guardar Cambios")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
 @Preview(showBackground = true)
 @Composable
 fun DigitalClosetCardPreview() {
@@ -769,6 +1079,7 @@ fun DigitalClosetCardPreview() {
                 styleTags = listOf("Gótico", "Streetwear"),
                 description = "Chaqueta de cuero negra con cierres metálicos"
             ),
+            onEditClick = {},
             onDeleteClick = {}
         )
     }

@@ -12,13 +12,17 @@
 
 1. **🚪 Armario Digital (Digital Closet):**
    - Captura y almacena fotos de tus prendas directamente en el almacenamiento interno de tu dispositivo.
-   - Categorización clara: partes de arriba (tops), partes de abajo (bottoms), calzado, abrigos/chaquetas y accesorios.
+   - Categorización detallada de prendas: Camisetas, Camisas, Tops, Sudaderas/Suéteres, Vestidos, Monos, Pantalones, Vaqueros, Faldas, Shorts, Abrigos/Chaquetas, Calzado, Bolsos y Accesorios.
+   - Edición completa de prendas existentes (cambio de foto, categoría, color, etiquetas de estilo y descripción).
    - Asignación de colores, estilos y etiquetas para un matching preciso.
 
-2. **🤖 Motor de Recomendación Inteligente (Outfit Recommendation Engine):**
-   - Algoritmo que evalúa compatibilidad de estilos, colores y tipo de evento.
-   - Filtra y propone combinaciones completas con la ropa disponible en tu armario.
-   - Opciones para regenerar y ajustar el conjunto propuesto.
+2. **🤖 Recomendaciones con Inteligencia Artificial (Google Gemini AI):**
+   - Integración nativa con la API de Google Gemini (`gemini-1.5-flash`).
+   - Personalización según tus planes del día (ej. ir a la oficina, al gym, salir de fiesta, cena formal, etc.).
+   - Personalización según tu estilo/vibe deseado (ej. elegante, cómodo, llamativo, minimalista, etc.).
+   - Interruptor para alinear la recomendación con tus referencias del Tablero de Inspiración (Lookbook).
+   - Generación de consejos de estilo prácticos personalizados para cada outfit.
+   - Motor heurístico local alternativo para sugerencias instantáneas por estilo.
 
 3. **💡 Tablero de Inspiración (Inspiration Lookbook):**
    - Guarda imágenes de referencia (revistas, redes sociales, influencers).

@@ -13,6 +13,8 @@ import com.example.myoutfit.data.repository.ClothingRepository
 import com.example.myoutfit.data.repository.InspirationRepository
 import com.example.myoutfit.data.repository.LoggedOutfitRepository
 import com.example.myoutfit.data.repository.OutfitRepository
+import com.example.myoutfit.domain.recommendation.GeminiOutfitService
+import com.example.myoutfit.domain.recommendation.GeminiRecommendationRequest
 import com.example.myoutfit.domain.recommendation.OutfitRecommendationEngine
 import com.example.myoutfit.domain.recommendation.RecommendationResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +31,11 @@ data class RecommendationUiState(
     val selectedStyleFilter: String = "Sorpréndeme",
     val currentRecommendation: RecommendationResult? = null,
     val isLoading: Boolean = false,
+    val isAiLoading: Boolean = false,
+    val activityPlan: String = "",
+    val desiredVibe: String = "",
+    val useInspirations: Boolean = true,
+    val showApiKeyDialog: Boolean = false,
     val showStylePreferencesDialog: Boolean = false,
     val showLogDialog: Boolean = false,
     val snackbarMessage: String? = null
@@ -40,7 +47,8 @@ class RecommendationViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val outfitRepository: OutfitRepository,
     private val loggedOutfitRepository: LoggedOutfitRepository,
-    private val engine: OutfitRecommendationEngine = OutfitRecommendationEngine()
+    private val engine: OutfitRecommendationEngine = OutfitRecommendationEngine(),
+    private val geminiService: GeminiOutfitService = GeminiOutfitService()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RecommendationUiState())
@@ -71,8 +79,8 @@ class RecommendationViewModel(
                             requestedStyle = state.selectedStyleFilter
                         )
                         newState.copy(currentRecommendation = rec)
-                    } else if (state.currentRecommendation != null) {
-                        // Re-evaluate current recommendation if items or preferences changed
+                    } else if (state.currentRecommendation != null && !state.currentRecommendation.isAiGenerated) {
+                        // Re-evaluate current local recommendation if items or preferences changed
                         val rec = engine.generateRecommendation(
                             clothingItems = clothing,
                             userPreferences = prefs,
@@ -106,6 +114,109 @@ class RecommendationViewModel(
         _uiState.update { it.copy(currentRecommendation = rec) }
     }
 
+    fun setActivityPlan(plan: String) {
+        _uiState.update { it.copy(activityPlan = plan) }
+    }
+
+    fun setDesiredVibe(vibe: String) {
+        _uiState.update { it.copy(desiredVibe = vibe) }
+    }
+
+    fun setUseInspirations(use: Boolean) {
+        _uiState.update { it.copy(useInspirations = use) }
+    }
+
+    fun setShowApiKeyDialog(show: Boolean) {
+        _uiState.update { it.copy(showApiKeyDialog = show) }
+    }
+
+    fun saveGeminiApiKey(apiKey: String) {
+        viewModelScope.launch {
+            userPreferencesRepository.updateGeminiApiKey(apiKey)
+            _uiState.update {
+                it.copy(
+                    showApiKeyDialog = false,
+                    snackbarMessage = "API Key de Gemini guardada correctamente"
+                )
+            }
+        }
+    }
+
+    fun generateGeminiRecommendation() {
+        val state = _uiState.value
+        val apiKey = state.userPreferences.geminiApiKey
+
+        if (apiKey.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    showApiKeyDialog = true,
+                    snackbarMessage = "Introduce tu API Key de Gemini para activar las recomendaciones con IA"
+                )
+            }
+            return
+        }
+
+        if (state.clothingItems.isEmpty()) {
+            _uiState.update { it.copy(snackbarMessage = "Tu armario está vacío. Agrega prendas primero.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAiLoading = true) }
+
+            val request = GeminiRecommendationRequest(
+                activityPlan = state.activityPlan,
+                desiredVibe = state.desiredVibe,
+                useInspirations = state.useInspirations,
+                availableItems = state.clothingItems,
+                inspirationItems = state.inspirationItems,
+                apiKey = apiKey
+            )
+
+            val result = geminiService.recommendOutfit(request)
+
+            result.onSuccess { geminiResult ->
+                val selectedItems = state.clothingItems.filter { it.id in geminiResult.selectedItemIds }
+                if (selectedItems.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = false,
+                            snackbarMessage = "No se pudieron asociar las prendas sugeridas con tu armario."
+                        )
+                    }
+                    return@onSuccess
+                }
+
+                val recResult = RecommendationResult(
+                    id = System.currentTimeMillis().toString(),
+                    title = geminiResult.title,
+                    items = selectedItems,
+                    styleTag = geminiResult.styleTag,
+                    matchPercentage = geminiResult.matchPercentage,
+                    matchReason = geminiResult.matchReason,
+                    isSufficientItems = true,
+                    isAiGenerated = true,
+                    styleAdvice = geminiResult.styleAdvice
+                )
+
+                _uiState.update {
+                    it.copy(
+                        currentRecommendation = recResult,
+                        isAiLoading = false,
+                        snackbarMessage = "✨ ¡Outfit generado con éxito por Gemini!"
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isAiLoading = false,
+                        snackbarMessage = "Error con Gemini: ${error.localizedMessage ?: "Ocurrió un error inesperado"}"
+                    )
+                }
+            }
+        }
+    }
+
     fun saveCurrentToFavorites() {
         val currentRec = _uiState.value.currentRecommendation ?: return
         if (!currentRec.isSufficientItems || currentRec.items.isEmpty()) return
@@ -128,7 +239,6 @@ class RecommendationViewModel(
         if (!currentRec.isSufficientItems || currentRec.items.isEmpty()) return
 
         viewModelScope.launch {
-            // First save as outfit if needed or log directly
             val outfitId = outfitRepository.insertOutfit(
                 Outfit(
                     title = currentRec.title,
