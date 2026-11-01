@@ -1,5 +1,6 @@
 package com.example.myoutfit.domain.recommendation
 
+import android.util.Log
 import com.example.myoutfit.data.local.entity.ClothingItem
 import com.example.myoutfit.data.local.entity.InspirationItem
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,7 @@ data class GeminiRecommendationRequest(
     val useInspirations: Boolean,
     val availableItems: List<ClothingItem>,
     val inspirationItems: List<InspirationItem>,
-    val apiKey: String
+    val apiKey: String,
 )
 
 data class GeminiRecommendationResult(
@@ -28,7 +29,7 @@ data class GeminiRecommendationResult(
     val styleTag: String,
     val matchPercentage: Int,
     val matchReason: String,
-    val styleAdvice: String? = null
+    val styleAdvice: String? = null,
 )
 
 class GeminiOutfitService(
@@ -36,19 +37,21 @@ class GeminiOutfitService(
         .connectTimeout(25, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .writeTimeout(25, TimeUnit.SECONDS)
-        .build()
+        .build(),
 ) {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val preferredModelList = listOf(
-        "gemini-1.5-flash",
+        "gemini-2.5-flash",
         "gemini-2.0-flash",
+        "gemini-1.5-flash",
         "gemini-1.5-flash-latest",
         "gemini-1.5-flash-002",
         "gemini-1.5-flash-001",
         "gemini-1.5-flash-8b",
         "gemini-2.0-flash-exp",
+        "gemini-2.5-pro",
         "gemini-1.5-pro",
         "gemini-1.5-pro-latest"
     )
@@ -73,10 +76,24 @@ class GeminiOutfitService(
 
         val candidateModels: List<String> = if (availableModelsResult.isSuccess && availableModelsResult.getOrThrow().isNotEmpty()) {
             val supported = availableModelsResult.getOrThrow()
-            supported.sortedBy { modelName ->
-                val index = preferredModelList.indexOf(modelName)
-                if (index >= 0) index else 999
-            }
+                .filter { name ->
+                    !name.contains("tts", ignoreCase = true) &&
+                    !name.contains("embed", ignoreCase = true) &&
+                    !name.contains("imagen", ignoreCase = true) &&
+                    !name.contains("audio", ignoreCase = true) &&
+                    !name.contains("realtime", ignoreCase = true)
+                }
+
+            supported.sortedWith { m1, m2 ->
+                val i1 = preferredModelList.indexOf(m1)
+                val i2 = preferredModelList.indexOf(m2)
+                when {
+                    i1 >= 0 && i2 >= 0 -> i1.compareTo(i2)
+                    i1 >= 0 -> -1
+                    i2 >= 0 -> 1
+                    else -> m1.compareTo(m2)
+                }
+            }.ifEmpty { preferredModelList }
         } else {
             val ex = availableModelsResult.exceptionOrNull()
             if (ex != null && (ex is IllegalArgumentException || ex.message?.contains("API") == true || ex.message?.contains("Google") == true)) {
@@ -84,6 +101,8 @@ class GeminiOutfitService(
             }
             preferredModelList
         }
+
+        Log.d("GeminiOutfitService", "Modelos candidatos a probar en orden: $candidateModels")
 
         // 2. Prepare the prompt
         val systemInstruction = """
@@ -111,7 +130,7 @@ class GeminiOutfitService(
         }
 
         val inspirationsPrompt = if (request.useInspirations && request.inspirationItems.isNotEmpty()) {
-            val inspList = request.inspirationItems.take(10).joinToString("\n") { insp ->
+            val inspList = request.inspirationItems.asSequence().take(10).joinToString("\n") { insp ->
                 "- ${insp.title} (Estilos: ${insp.styleTags.joinToString()})"
             }
             """
@@ -142,11 +161,15 @@ class GeminiOutfitService(
 
         for (modelName in candidateModels) {
             try {
+                Log.d("GeminiOutfitService", "Llamando a Gemini con modelo: $modelName")
                 val result = callGeminiGenerateContent(modelName, apiKey, prompt)
+                Log.d("GeminiOutfitService", "¡Respuesta exitosa de Gemini con $modelName!")
                 return@withContext Result.success(result)
             } catch (e: Exception) {
+                Log.w("GeminiOutfitService", "Fallo con modelo $modelName: ${e.message}")
                 lastError = e
-                if (e is IllegalArgumentException) {
+                val msg = e.message.orEmpty()
+                if (msg.contains("API Key no es válida", ignoreCase = true)) {
                     return@withContext Result.failure(e)
                 }
             }
@@ -157,7 +180,7 @@ class GeminiOutfitService(
             Result.failure(
                 IllegalStateException(
                     "Tu API Key no tiene acceso a los modelos de Gemini (Error 404).\n" +
-                    "Asegúrate de generar tu clave directamente en Google AI Studio (aistudio.google.com/app/apikey). Si la generaste en Google Cloud Console, asegúrate de activar la 'Generative Language API' en tu proyecto."
+                    "Asegúrate de generar tu clave directamente en Google AI Studio (aistudio.google.com/app/apikey)."
                 )
             )
         } else {
@@ -179,7 +202,7 @@ class GeminiOutfitService(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val bodyString = response.body?.string().orEmpty()
+                    val bodyString = response.body.string()
                     if (!response.isSuccessful) {
                         lastHttpError = parseErrorMessage(response.code, bodyString)
                         return@use
@@ -196,12 +219,24 @@ class GeminiOutfitService(
                             (0 until methods.length()).any { methods.optString(it) == "generateContent" }
                         } else false
 
-                        if (canGenerate) {
+                        val modalities = modelObj.optJSONArray("responseModalities")
+                        val supportsText = if (modalities != null) {
+                            (0 until modalities.length()).any { modalities.optString(it).equals("TEXT", ignoreCase = true) }
+                        } else true
+
+                        val isExcluded = name.contains("tts", ignoreCase = true) ||
+                            name.contains("embed", ignoreCase = true) ||
+                            name.contains("imagen", ignoreCase = true) ||
+                            name.contains("audio", ignoreCase = true) ||
+                            name.contains("realtime", ignoreCase = true)
+
+                        if (canGenerate && supportsText && !isExcluded) {
                             supported.add(name)
                         }
                     }
 
                     if (supported.isNotEmpty()) {
+                        Log.d("GeminiOutfitService", "Modelos de texto detectados: $supported")
                         return Result.success(supported)
                     }
                 }
@@ -216,7 +251,7 @@ class GeminiOutfitService(
 
         return Result.failure(
             IllegalStateException(
-                "No se encontraron modelos de Gemini disponibles para esta API Key. " +
+                "No se encontraron modelos de texto de Gemini disponibles para esta API Key. " +
                 "Verifica que tu clave haya sido creada en Google AI Studio (aistudio.google.com/app/apikey)."
             )
         )
@@ -235,22 +270,29 @@ class GeminiOutfitService(
 
             val requestJson = JSONObject().apply {
                 val contentsArray = JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        val partsArray = JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("text", prompt)
-                            })
+                    put(
+                        JSONObject().apply {
+                            put("role", "user")
+                            val partsArray = JSONArray().apply {
+                                put(
+                                    JSONObject().apply {
+                                        put("text", prompt)
+                                    }
+                                )
+                            }
+                            put("parts", partsArray)
                         }
-                        put("parts", partsArray)
-                    })
+                    )
                 }
                 put("contents", contentsArray)
 
-                put("generationConfig", JSONObject().apply {
-                    put("temperature", 0.7)
-                    put("responseMimeType", "application/json")
-                })
+                put(
+                    "generationConfig",
+                    JSONObject().apply {
+                        put("temperature", 0.7)
+                        put("responseMimeType", "application/json")
+                    }
+                )
             }
 
             val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
@@ -262,7 +304,7 @@ class GeminiOutfitService(
 
             try {
                 client.newCall(request).execute().use { response ->
-                    val bodyString = response.body?.string().orEmpty()
+                    val bodyString = response.body.string()
 
                     if (response.isSuccessful) {
                         return parseGeminiResponse(bodyString)
@@ -274,7 +316,7 @@ class GeminiOutfitService(
                         return callGeminiGenerateContentWithoutMimeType(version, modelName, apiKey, prompt)
                     }
 
-                    if (response.code == 400 || response.code == 403) {
+                    if (response.code == 400 && errorMsg.contains("API Key no es válida", ignoreCase = true)) {
                         throw IllegalArgumentException(errorMsg)
                     }
 
@@ -303,20 +345,27 @@ class GeminiOutfitService(
 
         val requestJson = JSONObject().apply {
             val contentsArray = JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    val partsArray = JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
-                        })
+                put(
+                    JSONObject().apply {
+                        put("role", "user")
+                        val partsArray = JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("text", prompt)
+                                }
+                            )
+                        }
+                        put("parts", partsArray)
                     }
-                    put("parts", partsArray)
-                })
+                )
             }
             put("contents", contentsArray)
-            put("generationConfig", JSONObject().apply {
-                put("temperature", 0.7)
-            })
+            put(
+                "generationConfig",
+                JSONObject().apply {
+                    put("temperature", 0.7)
+                }
+            )
         }
 
         val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
@@ -327,7 +376,7 @@ class GeminiOutfitService(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyString = response.body?.string().orEmpty()
+            val bodyString = response.body.string()
             if (!response.isSuccessful) {
                 val errorMsg = parseErrorMessage(response.code, bodyString)
                 throw IOException("Error ($modelName): $errorMsg")
