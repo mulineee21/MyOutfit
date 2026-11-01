@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Expressive Dynamic Wallpaper Palette (Light Mode, API 31+) -->
+    <color name="ic_launcher_bg_surface">@android:color/system_accent1_50</color>
+    <color name="ic_launcher_bg_scallop">@android:color/system_accent1_200</color>
+    <color name="ic_launcher_fg_garment">@android:color/system_accent1_600</color>
+    <color name="ic_launcher_fg_hanger">@android:color/system_accent1_900</color>
+    <color name="ic_launcher_fg_accent">@android:color/system_accent3_600</color>
+</resources>
+

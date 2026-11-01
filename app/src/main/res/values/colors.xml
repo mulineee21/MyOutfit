@@ -7,4 +7,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Material 3 Expressive Fallback Icon Palette (API 30) -->
+    <color name="ic_launcher_bg_surface">#FFEDE7F6</color>
+    <color name="ic_launcher_bg_scallop">#FFD0BCFF</color>
+    <color name="ic_launcher_fg_garment">#FF6750A4</color>
+    <color name="ic_launcher_fg_hanger">#FF21005D</color>
+    <color name="ic_launcher_fg_accent">#FF7D5260</color>
 </resources>

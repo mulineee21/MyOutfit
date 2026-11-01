@@ -12,22 +12,35 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.myoutfit"
+        applicationId = "com.joelmolina.myoutfit"
         minSdk = 30
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
+        buildConfigField("String", "APP_AUTHOR", "\"Joel Molina\"")
         buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: System.getenv("GEMINI_API_KEY") ?: ""}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = rootProject.file("keystore/myoutfit-joelmolina.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = "myoutfit_joelmolina"
+                keyAlias = "joelmolina"
+                keyPassword = "myoutfit_joelmolina"
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                enable = false
             }
         }
     }

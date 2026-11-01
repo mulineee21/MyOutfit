@@ -17,6 +17,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyOutfit">
 
+        <meta-data
+            android:name="author"
+            android:value="@string/app_author" />
+        <meta-data
+            android:name="developer"
+            android:value="@string/app_author" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

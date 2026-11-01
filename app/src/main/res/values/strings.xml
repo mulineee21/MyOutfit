@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">MyOutfit</string>
+    <string name="app_author">Joel Molina</string>
 </resources>

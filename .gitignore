@@ -17,6 +17,7 @@ app/build/
 *.apk
 *.aar
 *.aab
+*.idsig
 
 # OS Files
 .DS_Store
