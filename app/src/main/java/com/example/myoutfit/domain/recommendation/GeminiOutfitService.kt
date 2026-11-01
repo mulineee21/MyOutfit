@@ -42,14 +42,15 @@ class GeminiOutfitService(
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val preferredModelList = listOf(
-        "gemini-1.5-flash-latest",
-        "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-latest",
         "gemini-1.5-flash-002",
         "gemini-1.5-flash-001",
-        "gemini-1.5-pro-latest",
+        "gemini-1.5-flash-8b",
+        "gemini-2.0-flash-exp",
         "gemini-1.5-pro",
-        "gemini-pro"
+        "gemini-1.5-pro-latest"
     )
 
     suspend fun recommendOutfit(request: GeminiRecommendationRequest): Result<GeminiRecommendationResult> = withContext(Dispatchers.IO) {
@@ -67,8 +68,22 @@ class GeminiOutfitService(
             )
         }
 
-        // 1. Resolve which models are supported for this API key
-        val targetModel = resolveModel(apiKey)
+        // 1. Discover available models for this specific API key
+        val availableModelsResult = fetchAvailableModels(apiKey)
+
+        val candidateModels: List<String> = if (availableModelsResult.isSuccess && availableModelsResult.getOrThrow().isNotEmpty()) {
+            val supported = availableModelsResult.getOrThrow()
+            supported.sortedBy { modelName ->
+                val index = preferredModelList.indexOf(modelName)
+                if (index >= 0) index else 999
+            }
+        } else {
+            val ex = availableModelsResult.exceptionOrNull()
+            if (ex != null && (ex is IllegalArgumentException || ex.message?.contains("API") == true || ex.message?.contains("Google") == true)) {
+                return@withContext Result.failure(ex)
+            }
+            preferredModelList
+        }
 
         // 2. Prepare the prompt
         val systemInstruction = """
@@ -78,7 +93,7 @@ class GeminiOutfitService(
             REGLAS OBLIGATORIAS:
             1. Selecciona ÚNICAMENTE prendas de la lista proporcionada. Utiliza exclusivamente sus IDs numéricos.
             2. El conjunto debe ser coherente y ponible:
-               - Opción A: Prenda superior (Camiseta, Camisa, Top, Sudadera) + Prenda inferior (Pantalón, Falda, Shorts) + Calzado (y opcionalmente abrigo/chaqueta, bolso o accesorios).
+               - Opción A: Prenda superior (Camiseta, Camisa, Top, Sudadera) + Prenda inferior (Pantalón, Vaqueros, Falda, Shorts) + Calzado (y opcionalmente abrigo/chaqueta, bolso o accesorios).
                - Opción B: Prenda de cuerpo entero (Vestido o Mono) + Calzado (y opcionalmente abrigo/chaqueta, bolso o accesorios).
             3. Debes responder SIEMPRE con un JSON con esta estructura exacta:
                {
@@ -122,12 +137,7 @@ class GeminiOutfitService(
             Por favor, analiza las prendas y elige el mejor conjunto que cumpla con los requisitos. Devuelve solo el JSON válido.
         """.trimIndent()
 
-        // 3. Try target model, and fallback models if 404 occurs
-        val candidateModels = linkedSetOf<String>().apply {
-            add(targetModel)
-            addAll(preferredModelList)
-        }.toList()
-
+        // 3. Try models in candidate list
         var lastError: Exception? = null
 
         for (modelName in candidateModels) {
@@ -136,50 +146,80 @@ class GeminiOutfitService(
                 return@withContext Result.success(result)
             } catch (e: Exception) {
                 lastError = e
-                // If the error was an invalid API key, fail fast without trying other models
                 if (e is IllegalArgumentException) {
                     return@withContext Result.failure(e)
                 }
             }
         }
 
-        Result.failure(lastError ?: Exception("No se pudo obtener respuesta de los modelos de Gemini."))
+        val fallbackErrorMsg = lastError?.message ?: "No se pudo conectar con Gemini."
+        if (fallbackErrorMsg.contains("not found", ignoreCase = true) || fallbackErrorMsg.contains("404")) {
+            Result.failure(
+                IllegalStateException(
+                    "Tu API Key no tiene acceso a los modelos de Gemini (Error 404).\n" +
+                    "Asegúrate de generar tu clave directamente en Google AI Studio (aistudio.google.com/app/apikey). Si la generaste en Google Cloud Console, asegúrate de activar la 'Generative Language API' en tu proyecto."
+                )
+            )
+        } else {
+            Result.failure(lastError ?: Exception("No se pudo obtener respuesta de los modelos de Gemini."))
+        }
     }
 
-    private fun resolveModel(apiKey: String): String {
-        try {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
-            val request = Request.Builder().url(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return preferredModelList.first()
-                val bodyString = response.body.string()
-                val json = JSONObject(bodyString)
-                val modelsArray = json.optJSONArray("models") ?: return preferredModelList.first()
+    private fun fetchAvailableModels(apiKey: String): Result<List<String>> {
+        val versions = listOf("v1beta", "v1")
+        var lastHttpError: String? = null
 
-                val supportedModels = mutableListOf<String>()
-                for (i in 0 until modelsArray.length()) {
-                    val modelObj = modelsArray.optJSONObject(i) ?: continue
-                    val name = modelObj.optString("name").removePrefix("models/")
-                    val methods = modelObj.optJSONArray("supportedGenerationMethods")
-                    val canGenerate = if (methods != null) {
-                        (0 until methods.length()).any { methods.optString(it) == "generateContent" }
-                    } else false
+        for (version in versions) {
+            try {
+                val url = "https://generativelanguage.googleapis.com/$version/models?key=$apiKey"
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("x-goog-api-key", apiKey)
+                    .get()
+                    .build()
 
-                    if (canGenerate) {
-                        supportedModels.add(name)
+                client.newCall(request).execute().use { response ->
+                    val bodyString = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        lastHttpError = parseErrorMessage(response.code, bodyString)
+                        return@use
+                    }
+
+                    val json = JSONObject(bodyString)
+                    val modelsArray = json.optJSONArray("models") ?: return@use
+                    val supported = mutableListOf<String>()
+                    for (i in 0 until modelsArray.length()) {
+                        val modelObj = modelsArray.optJSONObject(i) ?: continue
+                        val name = modelObj.optString("name").removePrefix("models/")
+                        val methods = modelObj.optJSONArray("supportedGenerationMethods")
+                        val canGenerate = if (methods != null) {
+                            (0 until methods.length()).any { methods.optString(it) == "generateContent" }
+                        } else false
+
+                        if (canGenerate) {
+                            supported.add(name)
+                        }
+                    }
+
+                    if (supported.isNotEmpty()) {
+                        return Result.success(supported)
                     }
                 }
-
-                for (preferred in preferredModelList) {
-                    if (supportedModels.contains(preferred)) {
-                        return preferred
-                    }
-                }
-                return supportedModels.firstOrNull() ?: preferredModelList.first()
+            } catch (_: Exception) {
+                // Try next version on network or parsing error
             }
-        } catch (_: Exception) {
-            return preferredModelList.first()
         }
+
+        if (lastHttpError != null) {
+            return Result.failure(IllegalArgumentException(lastHttpError))
+        }
+
+        return Result.failure(
+            IllegalStateException(
+                "No se encontraron modelos de Gemini disponibles para esta API Key. " +
+                "Verifica que tu clave haya sido creada en Google AI Studio (aistudio.google.com/app/apikey)."
+            )
+        )
     }
 
     private fun callGeminiGenerateContent(
@@ -187,78 +227,84 @@ class GeminiOutfitService(
         apiKey: String,
         prompt: String
     ): GeminiRecommendationResult {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
+        val versions = listOf("v1beta", "v1")
+        var lastException: Exception? = null
 
-        val requestJson = JSONObject().apply {
-            val contentsArray = JSONArray().apply {
-                put(JSONObject().apply {
-                    val partsArray = JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
-                        })
-                    }
-                    put("parts", partsArray)
+        for (version in versions) {
+            val url = "https://generativelanguage.googleapis.com/$version/models/$modelName:generateContent?key=$apiKey"
+
+            val requestJson = JSONObject().apply {
+                val contentsArray = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        val partsArray = JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("text", prompt)
+                            })
+                        }
+                        put("parts", partsArray)
+                    })
+                }
+                put("contents", contentsArray)
+
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.7)
+                    put("responseMimeType", "application/json")
                 })
             }
-            put("contents", contentsArray)
 
-            put("generationConfig", JSONObject().apply {
-                put("temperature", 0.7)
-                put("responseMimeType", "application/json")
-            })
-        }
+            val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("x-goog-api-key", apiKey)
+                .post(requestBody)
+                .build()
 
-        val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
-        val request = Request.Builder()
-            .url(url)
-            .post(requestBody)
-            .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    val bodyString = response.body?.string().orEmpty()
 
-        client.newCall(request).execute().use { response ->
-            val bodyString = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        return parseGeminiResponse(bodyString)
+                    }
 
-            if (!response.isSuccessful) {
-                val errorMsg = try {
-                    val errJson = JSONObject(bodyString)
-                    errJson.optJSONObject("error")?.optString("message") ?: "HTTP ${response.code}"
-                } catch (_: Exception) {
-                    "HTTP ${response.code}: $bodyString"
+                    val errorMsg = parseErrorMessage(response.code, bodyString)
+
+                    if (response.code == 400 && bodyString.contains("responseMimeType", ignoreCase = true)) {
+                        return callGeminiGenerateContentWithoutMimeType(version, modelName, apiKey, prompt)
+                    }
+
+                    if (response.code == 400 || response.code == 403) {
+                        throw IllegalArgumentException(errorMsg)
+                    }
+
+                    if (response.code == 429) {
+                        throw IOException("Límite de cuota alcanzado. Espera unos segundos y vuelve a probar.")
+                    }
+
+                    lastException = IOException("Error con $modelName ($version): $errorMsg")
                 }
-
-                if (response.code == 400 && errorMsg.contains("API key", ignoreCase = true)) {
-                    throw IllegalArgumentException("La API Key introducida no es válida. Asegúrate de haberla copiado correctamente de Google AI Studio (aistudio.google.com).")
-                }
-
-                if (response.code == 404) {
-                    throw IOException("Modelo $modelName no disponible: $errorMsg")
-                }
-
-                if (response.code == 429) {
-                    throw IOException("Límite de solicitudes de Gemini alcanzado temporalmente. Espera unos segundos.")
-                }
-
-                // If responseMimeType is not supported on this model, retry without it
-                if (errorMsg.contains("responseMimeType", ignoreCase = true)) {
-                    return callGeminiGenerateContentWithoutMimeType(modelName, apiKey, prompt)
-                }
-
-                throw IOException("Error de Gemini ($modelName): $errorMsg")
+            } catch (e: Exception) {
+                if (e is IllegalArgumentException) throw e
+                lastException = e
             }
-
-            return parseGeminiResponse(bodyString)
         }
+
+        throw lastException ?: IOException("No se pudo obtener respuesta del modelo $modelName")
     }
 
     private fun callGeminiGenerateContentWithoutMimeType(
+        version: String,
         modelName: String,
         apiKey: String,
         prompt: String
     ): GeminiRecommendationResult {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
+        val url = "https://generativelanguage.googleapis.com/$version/models/$modelName:generateContent?key=$apiKey"
 
         val requestJson = JSONObject().apply {
             val contentsArray = JSONArray().apply {
                 put(JSONObject().apply {
+                    put("role", "user")
                     val partsArray = JSONArray().apply {
                         put(JSONObject().apply {
                             put("text", prompt)
@@ -276,15 +322,43 @@ class GeminiOutfitService(
         val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url(url)
+            .addHeader("x-goog-api-key", apiKey)
             .post(requestBody)
             .build()
 
         client.newCall(request).execute().use { response ->
             val bodyString = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IOException("Error HTTP ${response.code}: $bodyString")
+                val errorMsg = parseErrorMessage(response.code, bodyString)
+                throw IOException("Error ($modelName): $errorMsg")
             }
             return parseGeminiResponse(bodyString)
+        }
+    }
+
+    private fun parseErrorMessage(code: Int, bodyString: String): String {
+        val rawMsg = try {
+            val json = JSONObject(bodyString)
+            val errObj = json.optJSONObject("error")
+            errObj?.optString("message") ?: "HTTP $code"
+        } catch (_: Exception) {
+            "HTTP $code: $bodyString"
+        }
+
+        return when {
+            rawMsg.contains("API key not valid", ignoreCase = true) || (code == 400 && rawMsg.contains("API key", ignoreCase = true)) -> {
+                "La API Key no es válida. Asegúrate de copiar la clave completa generada en Google AI Studio (aistudio.google.com/app/apikey)."
+            }
+            rawMsg.contains("Generative Language API", ignoreCase = true) || code == 403 -> {
+                "La API 'Generative Language API' no está activada en tu proyecto de Google Cloud o la clave tiene restricciones. Te recomendamos generar una API Key nueva y directa desde Google AI Studio (aistudio.google.com/app/apikey)."
+            }
+            rawMsg.contains("location", ignoreCase = true) || rawMsg.contains("region", ignoreCase = true) -> {
+                "Tu región o red actual no tiene soporte directo para Gemini. Si estás usando una VPN o proxy, prueba a desactivarlo."
+            }
+            rawMsg.contains("quota", ignoreCase = true) || code == 429 -> {
+                "Has alcanzado el límite de peticiones de Gemini temporalmente. Espera unos segundos y vuelve a probar."
+            }
+            else -> rawMsg
         }
     }
 
