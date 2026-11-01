@@ -43,17 +43,18 @@ class GeminiOutfitService(
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val preferredModelList = listOf(
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-002",
-        "gemini-1.5-flash-001",
-        "gemini-1.5-flash-8b",
-        "gemini-2.0-flash-exp",
         "gemini-2.5-pro",
         "gemini-1.5-pro",
-        "gemini-1.5-pro-latest"
     )
 
     suspend fun recommendOutfit(request: GeminiRecommendationRequest): Result<GeminiRecommendationResult> = withContext(Dispatchers.IO) {
@@ -106,32 +107,39 @@ class GeminiOutfitService(
 
         // 2. Prepare the prompt
         val systemInstruction = """
-            Eres un estilista personal de moda de alta costura y moda cotidiana.
-            Tu misión es seleccionar prendas exclusivas del armario real del usuario para crear un outfit completo, armónico y adecuado para las actividades planificadas y el estilo deseado.
+            Eres un estilista personal de moda inteligente y empático.
+            Tu misión es crear un conjunto de ropa (outfit) combinando EXCLUSIVAMENTE prendas que el usuario tiene registradas en su armario real.
             
-            REGLAS OBLIGATORIAS:
-            1. Selecciona ÚNICAMENTE prendas de la lista proporcionada. Utiliza exclusivamente sus IDs numéricos.
-            2. El conjunto debe ser coherente y ponible:
-               - Opción A: Prenda superior (Camiseta, Camisa, Top, Sudadera) + Prenda inferior (Pantalón, Vaqueros, Falda, Shorts) + Calzado (y opcionalmente abrigo/chaqueta, bolso o accesorios).
-               - Opción B: Prenda de cuerpo entero (Vestido o Mono) + Calzado (y opcionalmente abrigo/chaqueta, bolso o accesorios).
-            3. Debes responder SIEMPRE con un JSON con esta estructura exacta:
-               {
-                 "title": "Nombre creativo y atractivo del outfit en español",
-                 "selectedItemIds": [1, 2, 3],
-                 "styleTag": "Etiqueta principal (ej. Oficina, Gym, Fiesta, Casual, Elegante, Streetwear)",
-                 "matchPercentage": 95,
-                 "matchReason": "Explicación detallada en español de por qué este conjunto es perfecto para su actividad y cómo logra el aspecto deseado (y si aplica, cómo se inspira en su lookbook).",
-                 "styleAdvice": "Consejo práctico de estilismo (ej. meter la camisa por dentro, remangar mangas, añadir complementos)."
-               }
+            REGLAS CRÍTICAS DE SELECCIÓN:
+            1. SELECCIONA OBLIGATORIAMENTE prendas que existan en la lista 'PRENDAS DISPONIBLES EN EL ARMARIO DEL USUARIO' proporcionada a continuación.
+            2. En el campo 'selectedItemIds', incluye SIEMPRE los IDs numéricos exactos de las prendas que has elegido (ejemplo: [1, 2]). NUNCA devuelvas una lista vacía ni inventes IDs.
+            3. Selecciona la mejor combinación posible con las prendas que el usuario TIENE en su armario:
+               - Si tiene prendas superiores e inferiores, combina al menos 1 prenda superior (camiseta, camisa, sudadera) y 1 prenda inferior (pantalón, vaqueros, falda, shorts).
+               - Si tiene vestidos o monos, selecciona 1 prenda de cuerpo entero.
+               - Añade calzado, abrigo o accesorios si el usuario los tiene registrados en su lista.
+               - Si al usuario le falta alguna categoría (por ejemplo, no tiene calzado registrado), crea el conjunto con las prendas que SÍ tiene registradas.
+            4. En 'matchReason', explica detalladamente por qué has elegido ESTAS prendas del armario del usuario, mencionando cada prenda seleccionada por su categoría y color.
+            5. En 'styleAdvice', ofrece consejos prácticos sobre cómo combinar y llevar estas prendas (ej. remangar, meter por dentro, tipo de calzado recomendado si no lo tiene, complementos, etc.).
+            
+            FORMATO DE RESPUESTA:
+            Debes responder ÚNICAMENTE con un JSON con esta estructura exacta:
+            {
+              "title": "Nombre creativo del outfit en español (ej. Look Deportivo Cómodo para Gym)",
+              "selectedItemIds": [1, 2],
+              "styleTag": "Estilo principal (ej. Gym, Oficina, Casual, Elegante, De fiesta)",
+              "matchPercentage": 96,
+              "matchReason": "Explicación detallada mencionando las prendas concretas de su armario seleccionadas y por qué son ideales para la actividad.",
+              "styleAdvice": "Consejo de estilo práctico para lucir el conjunto."
+            }
         """.trimIndent()
 
         val itemsDescription = request.availableItems.joinToString("\n") { item ->
-            "- ID ${item.id}: [${item.category.displayName}] Color: ${item.color}, Estilos: ${item.styleTags.joinToString()}, Descripción: ${item.description.ifBlank { "Sin descripción" }}"
+            "- ID ${item.id}: [Categoría: ${item.category.displayName}] Color: ${item.color.ifBlank { "No especificado" }}, Estilos: ${item.styleTags.joinToString().ifBlank { "General" }}, Descripción: ${item.description.ifBlank { "Sin descripción adicional" }}"
         }
 
         val inspirationsPrompt = if (request.useInspirations && request.inspirationItems.isNotEmpty()) {
             val inspList = request.inspirationItems.asSequence().take(10).joinToString("\n") { insp ->
-                "- ${insp.title} (Estilos: ${insp.styleTags.joinToString()})"
+                "- ${insp.title} (Estilos: ${insp.styleTags.joinToString().ifBlank { "General" }})"
             }
             """
             
@@ -149,12 +157,14 @@ class GeminiOutfitService(
             $inspirationsPrompt
 
             PETICIÓN DEL DÍA:
-            - Actividad / Lo que va a hacer hoy: "${request.activityPlan.ifBlank { "Día habitual o casual" }}"
+            - Actividad / Plan: "${request.activityPlan.ifBlank { "Día habitual / Casual" }}"
             - Cómo se quiere ver hoy: "${request.desiredVibe.ifBlank { "Con estilo y cómodo" }}"
-            - ¿Tener en cuenta inspiraciones?: ${if (request.useInspirations) "SÍ, alinea la selección con su lookbook" else "NO"}
+            - ¿Inspirarse en Lookbook?: ${if (request.useInspirations) "SÍ, ten en cuenta sus inspiraciones guardadas" else "NO"}
 
-            Por favor, analiza las prendas y elige el mejor conjunto que cumpla con los requisitos. Devuelve solo el JSON válido.
+            Elige las mejores prendas de la lista anterior y devuelve el JSON correspondiente.
         """.trimIndent()
+
+        Log.d("GeminiOutfitService", "Prompt enviado a Gemini:\n$prompt")
 
         // 3. Try models in candidate list
         var lastError: Exception? = null
@@ -163,7 +173,7 @@ class GeminiOutfitService(
             try {
                 Log.d("GeminiOutfitService", "Llamando a Gemini con modelo: $modelName")
                 val result = callGeminiGenerateContent(modelName, apiKey, prompt)
-                Log.d("GeminiOutfitService", "¡Respuesta exitosa de Gemini con $modelName!")
+                Log.d("GeminiOutfitService", "¡Respuesta exitosa de Gemini con $modelName! Selected IDs: ${result.selectedItemIds}")
                 return@withContext Result.success(result)
             } catch (e: Exception) {
                 Log.w("GeminiOutfitService", "Fallo con modelo $modelName: ${e.message}")
@@ -412,6 +422,7 @@ class GeminiOutfitService(
     }
 
     private fun parseGeminiResponse(bodyString: String): GeminiRecommendationResult {
+        Log.d("GeminiOutfitService", "Respuesta cruda de Gemini:\n$bodyString")
         val json = JSONObject(bodyString)
         val candidates = json.optJSONArray("candidates")
             ?: throw IOException("Gemini no devolvió candidatos válidos.")
@@ -428,27 +439,45 @@ class GeminiOutfitService(
             ?: throw IOException("No se encontraron partes de texto en la respuesta.")
 
         val rawText = parts.getJSONObject(0).optString("text")
+        Log.d("GeminiOutfitService", "Texto limpio de partes de Gemini:\n$rawText")
         val cleanJson = cleanJsonResponse(rawText)
         val outfitJson = JSONObject(cleanJson)
 
         val title = outfitJson.optString("title", "Outfit Recomendado por Gemini")
         val styleTag = outfitJson.optString("styleTag", "Personalizado")
-        val matchPercentage = outfitJson.optInt("matchPercentage", 92).coerceIn(60, 99)
+        val matchPercentage = outfitJson.optInt("matchPercentage", 95).coerceIn(60, 99)
         val matchReason = outfitJson.optString(
             "matchReason",
             "Conjunto seleccionado especialmente para tu actividad de hoy."
         )
         val styleAdvice = outfitJson.optString("styleAdvice", "").ifBlank { null }
 
-        val selectedIdsJson = outfitJson.optJSONArray("selectedItemIds") ?: JSONArray()
+        // Robust parsing of selectedItemIds (arrays of numbers, strings, or objects)
+        val itemsArray = outfitJson.optJSONArray("selectedItemIds")
+            ?: outfitJson.optJSONArray("selected_item_ids")
+            ?: outfitJson.optJSONArray("selectedItems")
+            ?: outfitJson.optJSONArray("items")
+            ?: JSONArray()
+
         val selectedIds = mutableListOf<Long>()
-        for (i in 0 until selectedIdsJson.length()) {
-            selectedIds.add(selectedIdsJson.getLong(i))
+        for (i in 0 until itemsArray.length()) {
+            val optLong = itemsArray.optLong(i, -1L)
+            if (optLong != -1L) {
+                selectedIds.add(optLong)
+            } else {
+                val optObj = itemsArray.optJSONObject(i)
+                if (optObj != null) {
+                    val idFromObj = optObj.optLong("id", optObj.optLong("selectedItemId", -1L))
+                    if (idFromObj != -1L) selectedIds.add(idFromObj)
+                } else {
+                    val strVal = itemsArray.optString(i)
+                    val extractedId = strVal.filter { it.isDigit() }.toLongOrNull()
+                    if (extractedId != null) selectedIds.add(extractedId)
+                }
+            }
         }
 
-        if (selectedIds.isEmpty()) {
-            throw IOException("Gemini no pudo encontrar prendas adecuadas en tu armario para este plan.")
-        }
+        Log.d("GeminiOutfitService", "IDs extraídos de prendas: $selectedIds")
 
         return GeminiRecommendationResult(
             title = title,

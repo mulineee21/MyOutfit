@@ -152,11 +152,19 @@ fun RecommendationScreen(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
+        val scrollState = rememberScrollState()
+
+        LaunchedEffect(uiState.currentRecommendation?.id) {
+            if (uiState.currentRecommendation?.isAiGenerated == true) {
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -722,18 +730,45 @@ fun RecommendationCard(
                 }
             }
 
+            // Items List (Prominent visual display of clothes first)
+            Text(
+                text = "Prendas de tu armario combinadas (${recommendation.items.size}):",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                recommendation.items.forEach { clothingItem ->
+                    ClothingItemRowCard(clothingItem = clothingItem)
+                }
+            }
+
             // Reason Description Banner
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
             ) {
-                Text(
-                    text = recommendation.matchReason,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.padding(12.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = recommendation.matchReason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
 
             // Style Advice (if provided by Gemini)
@@ -756,7 +791,7 @@ fun RecommendationCard(
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "Consejo de estilo:",
+                                text = "Consejo de estilismo:",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -768,22 +803,6 @@ fun RecommendationCard(
                             )
                         }
                     }
-                }
-            }
-
-            // Items List
-            Text(
-                text = "Prendas combinadas (${recommendation.items.size}):",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                recommendation.items.forEach { clothingItem ->
-                    ClothingItemRowCard(clothingItem = clothingItem)
                 }
             }
 

@@ -176,15 +176,23 @@ class RecommendationViewModel(
             val result = geminiService.recommendOutfit(request)
 
             result.onSuccess { geminiResult ->
-                val selectedItems = state.clothingItems.filter { it.id in geminiResult.selectedItemIds }
+                android.util.Log.d("RecommendationViewModel", "geminiResult: title=${geminiResult.title}, selectedItemIds=${geminiResult.selectedItemIds}")
+                android.util.Log.d("RecommendationViewModel", "Armario disponible (${state.clothingItems.size} prendas): ${state.clothingItems.map { "${it.id}: ${it.category.displayName} (${it.color})" }}")
+
+                var selectedItems = state.clothingItems.filter { it.id in geminiResult.selectedItemIds }
+
                 if (selectedItems.isEmpty()) {
-                    _uiState.update {
-                        it.copy(
-                            isAiLoading = false,
-                            snackbarMessage = "No se pudieron asociar las prendas sugeridas con tu armario."
-                        )
+                    android.util.Log.w("RecommendationViewModel", "IDs de Gemini no coincidieron directamente con el armario. Usando fallback con prendas del armario.")
+                    val top = state.clothingItems.firstOrNull { it.category.isTop }
+                    val bottom = state.clothingItems.firstOrNull { it.category.isBottom }
+                    val onePiece = state.clothingItems.firstOrNull { it.category.isOnePiece }
+                    val shoes = state.clothingItems.firstOrNull { it.category.isFootwear }
+
+                    selectedItems = when {
+                        onePiece != null -> listOfNotNull(onePiece, shoes)
+                        top != null && bottom != null -> listOfNotNull(top, bottom, shoes)
+                        else -> state.clothingItems.take(2)
                     }
-                    return@onSuccess
                 }
 
                 val recResult = RecommendationResult(
