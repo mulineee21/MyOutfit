@@ -3,14 +3,14 @@
 [![Autor](https://img.shields.io/badge/Autor-Joel%20Molina%20(@mulineee21)-8b5cf6?style=for-the-badge&logo=github)](https://github.com/mulineee21)
 [![Licencia](https://img.shields.io/badge/Licencia-GPL%20v3%20o%20superior-blue.svg?style=for-the-badge)](LICENSE)
 [![Sitio Web Oficial](https://img.shields.io/badge/Web%20Oficial-mulineee21.github.io%2Fmyoutfit--web-ec4899?style=for-the-badge)](https://mulineee21.github.io/myoutfit-web/)
-[![Release Oficial](https://img.shields.io/badge/Release-v1.0.0-emerald.svg?style=for-the-badge&logo=android)](https://github.com/mulineee21/MyOutfit/releases/tag/v1.0.0)
+[![Release Oficial](https://img.shields.io/badge/Release-v1.1.0-emerald.svg?style=for-the-badge&logo=android)](https://github.com/mulineee21/MyOutfit/releases/tag/v1.1.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7f52ff?style=for-the-badge&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285f4?style=for-the-badge&logo=android)](https://developer.android.com/jetpack/compose)
 
-> **MyOutfit** es una aplicación moderna y nativa para Android creada por **Joel Molina**, desarrollada en **Kotlin** y **Jetpack Compose**. Integra la Inteligencia Artificial de **Google Gemini** para seleccionar y recomendarte qué ropa ponerte cada día de manera personalizada, combinando de forma inteligente las prendas reales que tienes registradas en tu propio armario.
+> **MyOutfit** es una aplicación moderna y nativa para Android creada por **Joel Molina**, desarrollada en **Kotlin** y **Jetpack Compose**. Integra la Inteligencia Artificial de **Google Gemini** para recomendarte qué ropa ponerte cada día, autocategorizar tus prendas, organizar tu **Lista de Deseos** con enlaces de tiendas (SHEIN, Amazon, etc.) y realizar copias de seguridad portátiles para migrar tus datos entre dispositivos.
 
 🌐 **Sitio Web Oficial & Demo:** [https://mulineee21.github.io/myoutfit-web/](https://mulineee21.github.io/myoutfit-web/)  
-📦 **Descarga Directa de APK (v1.0.0):** [MyOutfit-JoelMolina-v1.0.0.apk](https://github.com/mulineee21/MyOutfit/releases/download/v1.0.0/MyOutfit-JoelMolina-v1.0.0.apk)
+📦 **Descarga Directa de APK (v1.1.0):** [MyOutfit-JoelMolina-v1.1.0.apk](https://github.com/mulineee21/MyOutfit/releases/download/v1.1.0/MyOutfit-JoelMolina-v1.1.0.apk)
 
 ---
 
@@ -29,13 +29,17 @@ El proyecto ha sido desarrollado bajo los más rigurosos estándares de la ingen
 ### 1. Clean Architecture (Arquitectura Limpia)
 El código está estructurado en tres capas desacopladas:
 * **Capa de Presentación (`ui/`):** Construida de forma reactiva y declarativa con **Jetpack Compose** y **Material Design 3 (Material You)**. Se encarga de renderizar el estado visual y capturar eventos de usuario.
-* **Capa de Dominio (`domain/`):** Contiene la lógica pura de negocio y las reglas de recomendación.
+* **Capa de Dominio (`domain/`):** Contiene la lógica pura de negocio, reglas de recomendación y servicios de IA:
   - `OutfitRecommendationEngine`: Algoritmo heurístico local para matching de prendas según ocasión, temporadas, compatibilidad de colores y tipos de piezas.
-  - `GeminiOutfitService`: Servicio de conexión, formulación de prompts estructurados y parsing seguro JSON con la API de Google Gemini (`gemini-1.5-flash`).
-* **Capa de Datos (`data/`):** Implementación de persistencia local y repositorios concretos (`ClothingRepository`, `OutfitRepository`, `InspirationRepository`, `LoggedOutfitRepository`).
+  - `GeminiOutfitService`: Servicio de conexión, formulación de prompts estructurados y parsing seguro JSON para recomendación de outfits.
+  - `GeminiClothingAnalysisService`: Servicio multimodal con Gemini Vision para autocategorización de prendas y análisis estilístico de productos por enlace.
+  - `ProductMetadataExtractor`: Extractor en segundo plano de metadatos OpenGraph y HTML (título, foto, precio, tienda) para enlaces de SHEIN, Amazon, Zara, etc.
+* **Capa de Datos (`data/`):** Implementación de persistencia local, repositorios concretos y motor de respaldo:
+  - `ClothingRepository`, `OutfitRepository`, `InspirationRepository`, `LoggedOutfitRepository`, `WishlistRepository`.
+  - `BackupManager`: Motor de exportación e importación en formato `.zip` que serializa la base de datos completa e incluye las imágenes del armario con resolución original.
 
 ### 2. Patrón MVVM (Model-View-ViewModel)
-* **Separación de responsabilidades:** La interfaz de usuario observa los cambios de estado emitidos por los `ViewModel` (`DigitalClosetViewModel`, `RecommendationViewModel`, `InspirationViewModel`, `LogAndFavoritesViewModel`).
+* **Separación de responsabilidades:** La interfaz de usuario observa los cambios de estado emitidos por los `ViewModel` (`DigitalClosetViewModel`, `RecommendationViewModel`, `WishlistViewModel`, `InspirationViewModel`, `LogAndFavoritesViewModel`, `BackupViewModel`).
 * **Supervivencia a cambios de configuración:** Los ViewModels gestionan el ciclo de vida de la actividad y la ejecución asíncrona mediante `viewModelScope`.
 
 ### 3. Flujo Unidireccional de Datos (UDF - Unidirectional Data Flow)
@@ -45,40 +49,50 @@ El código está estructurado en tres capas desacopladas:
 ### 4. Repository Pattern (Patrón Repositorio)
 * Actúa como única fuente de la verdad (*Single Source of Truth*), abstrayendo a los casos de uso y ViewModels de los detalles de implementación de la base de datos o almacenamiento en disco.
 
-### 5. Arquitectura Offline-First
-* **Persistencia Total Local:** Todo el armario, lookbook y registro de outfits se guarda en una base de datos local SQLite mediante **Room Database**.
-* **Privacidad por Diseño:** Las fotos de las prendas se gestionan mediante el almacenamiento interno del dispositivo (`FileProvider`), garantizando que las imágenes no salgan del móvil ni se suban a servidores ajenos.
-* **Jetpack DataStore Preferences:** Para almacenar de manera reactiva y segura las preferencias de usuario, estilos favoritos y la API Key de Gemini.
+### 5. Arquitectura Offline-First y Privacidad
+* **Persistencia Total Local:** Todo el armario, lookbook, diario de outfits y lista de deseos se almacena localmente en SQLite mediante **Room Database**.
+* **Privacidad por Diseño:** Las fotos de las prendas se guardan en el almacenamiento interno privado de la aplicación, garantizando que tus imágenes personales permanezcan siempre bajo tu control.
+* **Jetpack DataStore Preferences:** Para almacenar de manera reactiva y segura las preferencias de usuario, opciones de IA y la clave de API de Gemini.
 
 ### 6. Concurrencia Estructurada y Programación Reactiva
-* **Kotlin Coroutines:** Para la gestión eficiente y no bloqueante de tareas en segundo plano (consultas IO a Room, llamadas HTTP a Gemini, procesamiento de imágenes).
+* **Kotlin Coroutines:** Para la gestión eficiente y no bloqueante de tareas en segundo plano (consultas IO a Room, llamadas HTTP a Gemini, extracción de metadatos, compresión ZIP).
 * **Kotlin Flow:** Para la propagación reactiva en tiempo real de los datos desde la base de datos hasta la interfaz de usuario.
 
 ---
 
 ## ✨ Características Principales
 
-1. **🚪 Armario Digital Privado (Digital Closet):**
-   - Captura y almacena fotos de tus prendas directamente en el almacenamiento interno de tu dispositivo.
-   - Categorización detallada: *Camisetas, Camisas, Tops, Sudaderas/Suéteres, Vestidos, Monos, Pantalones, Vaqueros, Faldas, Shorts, Abrigos/Chaquetas, Calzado, Bolsos y Accesorios*.
-   - Edición completa de prendas existentes (cambio de foto, categoría, color, etiquetas de estilo y descripción).
-   - Asignación de colores, estilos y etiquetas para un matching preciso.
+1. **🛍️ Lista de Deseos Inteligente con IA (Wishlist):**
+   - Agrega prendas mediante enlaces de producto (**SHEIN, Amazon, Zara, ASOS, etc.**) o de forma manual.
+   - Extracción automática de metadatos: foto de alta calidad, precio, moneda y nombre del producto.
+   - Análisis estilístico con Gemini IA: clasificación por tipo de prenda y etiquetas de estilo (#gótico, #deporte, #casual, #vintage, #aesthetic).
+   - Filtros por tienda y estilo de moda. Enlace directo al producto ("Ver en tienda") y gestión de comprados.
 
-2. **🤖 Recomendaciones de Ropa con Google Gemini IA:**
-   - Integración nativa con la API de Google Gemini (`gemini-1.5-flash`).
-   - Personalización según tus planes del día (oficina, gym, fiesta, cena formal, relax).
-   - Personalización según tu estilo o vibe deseado (elegante, cómodo, llamativo, minimalista, etc.).
-   - Conexión con el Tablero de Inspiración (Lookbook) para alinear la recomendación con tus referencias.
-   - Generación de consejos de estilo prácticos personalizados para cada outfit.
-   - **Motor Heurístico Local:** Motor alternativo para sugerencias instantáneas por estilo que funciona 100% offline sin necesidad de conexión ni consumo de tokens.
+2. **📲 Integración Nativa con el Menú Compartir de Android:**
+   - Comparte enlaces directamente desde aplicaciones externas (SHEIN, Amazon, Chrome, etc.) hacia **MyOutfit**.
+   - La app se abre directamente en la Lista de Deseos, autocompleta el enlace recibido e inicia el análisis con IA automáticamente.
 
-3. **💡 Tablero de Inspiración (Inspiration Lookbook):**
-   - Guarda imágenes de referencia (revistas, redes sociales, influencers).
-   - Sirve como guía de estilo para refinar tus preferencias y gustos.
+3. **🚪 Armario Digital con Autocategorización por IA:**
+   - Guarda fotos de tus prendas tomadas con la cámara o elegidas de la galería.
+   - **Autocategorización asistida por IA:** Gemini Vision analiza la prenda y sugiere la categoría (de entre 14 opciones), color predominante y etiquetas de estilo.
+   - **Interruptor configurable:** El usuario decide libremente si desea activar o desactivar la asistencia de IA en cualquier momento.
 
-4. **⭐ Diario de Outfits & Anti-Repetición:**
-   - Historial de outfits usados por día para evitar repetir prendas en la misma semana y planificar tu estilo.
-   - Marcador de outfits favoritos para acceder a ellos rápidamente.
+4. **🤖 Recomendaciones de Ropa con Google Gemini IA:**
+   - Selección inteligente de outfits basada en tu plan del día (oficina, gym, fiesta, etc.) y tu vibe/estilo deseado.
+   - Conexión opcional con tu Tablero de Inspiración (Lookbook).
+   - Consejos de estilista personalizados para cada conjunto.
+   - **Motor Heurístico Local:** Motor alternativo offline para sugerencias instantáneas sin conexión a internet ni consumo de API.
+
+5. **📦 Copia de Seguridad y Restauración Completa (Backup & Restore):**
+   - Exporta toda tu información en un archivo comprimido portátil `.zip` para transferir tus datos fácilmente al cambiar de móvil.
+   - Incluye todas las fotos reales en resolución completa y la base de datos completa con remapeo de identificadores y validación de integridad.
+
+6. **💡 Tablero de Inspiración (Lookbook):**
+   - Guarda imágenes de referencia de moda y tendencias para que la IA aprenda de tus gustos estéticos.
+
+7. **⭐ Diario de Outfits & Favoritos:**
+   - Registro diario de qué outfit usaste para evitar repeticiones.
+   - Guarda tus combinaciones favoritas para acceder a ellas en cualquier momento.
 
 ---
 
@@ -89,12 +103,13 @@ El código está estructurado en tres capas desacopladas:
 | **Lenguaje** | Kotlin 100% |
 | **Interfaz de Usuario** | Jetpack Compose + Material Design 3 (Material You) |
 | **Arquitectura** | Clean Architecture + MVVM + UDF + Repository Pattern |
-| **Inteligencia Artificial** | Google Gemini API (`gemini-1.5-flash`) |
-| **Base de Datos** | Room Database (SQLite) + TypeConverters |
+| **Inteligencia Artificial** | Google Gemini API (`gemini-1.5-flash` Multimodal y Texto) |
+| **Base de Datos** | Room Database v2 (SQLite) + TypeConverters |
 | **Preferencias** | Jetpack DataStore Preferences |
 | **Asincronía & Reactividad** | Kotlin Coroutines & StateFlow / Flow |
 | **Carga de Imágenes** | Coil (Compose) |
 | **Cliente HTTP** | OkHttp3 |
+| **Compresión de Datos** | Java ZipOutputStream / ZipInputStream |
 | **Almacenamiento de Archivos** | Android Internal Storage + FileProvider |
 
 ---
@@ -104,24 +119,29 @@ El código está estructurado en tres capas desacopladas:
 ```text
 app/src/main/java/com/example/myoutfit/
 ├── MyOutfitApplication.kt           # Inicialización de dependencias y repositorios de la app
-├── MainActivity.kt                  # Activity principal contenedora de Compose
+├── MainActivity.kt                  # Activity principal con soporte de Intent ACTION_SEND
 ├── data/                            # CAPA DE DATOS (Data Layer)
+│   ├── backup/                      # Sistema de Backup & Restore ZIP (BackupManager, BackupModels)
 │   ├── local/
 │   │   ├── converters/              # Conversores de tipos para Room
-│   │   ├── dao/                     # Data Access Objects (ClothingDao, OutfitDao, etc.)
-│   │   ├── db/                      # MyOutfitDatabase (Room)
-│   │   ├── entity/                  # Entidades (ClothingItem, Outfit, LoggedOutfit, etc.)
+│   │   ├── dao/                     # DAOs (ClothingDao, OutfitDao, WishlistDao, etc.)
+│   │   ├── db/                      # MyOutfitDatabase (Room v2 con migraciones)
+│   │   ├── entity/                  # Entidades (ClothingItem, Outfit, WishlistItem, etc.)
 │   │   └── preferences/             # UserPreferencesRepository (DataStore)
-│   └── repository/                  # Repositorios concretos que implementan la lógica de datos
+│   └── repository/                  # Repositorios concretos (Clothing, Wishlist, etc.)
 ├── domain/                          # CAPA DE DOMINIO (Domain Layer)
-│   └── recommendation/              # Motores de recomendación (GeminiOutfitService & OutfitRecommendationEngine)
+│   ├── ai/                          # GeminiClothingAnalysisService (Visión y análisis multimodal)
+│   ├── recommendation/              # GeminiOutfitService & OutfitRecommendationEngine
+│   └── wishlist/                    # ProductMetadataExtractor (OpenGraph & HTML)
 ├── ui/                              # CAPA DE PRESENTACIÓN (UI / Presentation Layer)
-│   ├── closet/                      # Pantalla de Armario Digital y ViewModel
+│   ├── backup/                      # Diálogo y ViewModel de Copia de Seguridad
+│   ├── closet/                      # Pantalla de Armario Digital con toggle de IA
 │   ├── inspiration/                 # Lookbook de Inspiración y ViewModel
 │   ├── logfavorites/                # Diario de Outfits, Favoritos e Historial
 │   ├── main/                        # Navegación principal (Scaffold, Bottom Navigation Bar)
 │   ├── recommendation/              # Pantalla del Recomendador con IA y ViewModel
-│   └── theme/                       # Paleta Material 3, tipografías y soporte de Dynamic Color
+│   ├── theme/                       # Paleta Material 3, tipografías y Dynamic Color
+│   └── wishlist/                    # Pantalla de Lista de Deseos y ViewModel
 └── util/                            # Utilidades de persistencia, FileProvider y URIs de imágenes
 ```
 
@@ -131,7 +151,7 @@ app/src/main/java/com/example/myoutfit/
 
 ### Requisitos
 - Android Studio Ladybug, Koala o versión reciente.
-- Android SDK con soporte para Android 8.0 Oreo (API 26+) o superior.
+- Android SDK con soporte para Android 11+ (API 30+) hasta Android 16 (API 36).
 - Java 17 / JDK 17 o superior.
 
 ### Pasos
@@ -143,7 +163,7 @@ app/src/main/java/com/example/myoutfit/
 
 2. **Abrir en Android Studio:**
    - Selecciona **File -> Open...** y elige la carpeta `MyOutfit`.
-   - Deja que Android Studio descargue las dependencias de Gradle y configure el SDK local automáticamente.
+   - Deja que Android Studio descargue las dependencias de Gradle y sincronice el proyecto.
 
 3. **Compilar y Ejecutar:**
    ```bash

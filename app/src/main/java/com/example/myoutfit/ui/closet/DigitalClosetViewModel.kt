@@ -7,12 +7,17 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.myoutfit.data.local.entity.ClothingCategory
 import com.example.myoutfit.data.local.entity.ClothingItem
+import com.example.myoutfit.data.local.preferences.UserPreferencesRepository
 import com.example.myoutfit.data.repository.ClothingRepository
+import com.example.myoutfit.domain.ai.GeminiClothingAnalysisService
 import com.example.myoutfit.util.ImageStorageManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -23,11 +28,16 @@ data class DigitalClosetUiState(
     val isAddDialogOpen: Boolean = false,
     val itemToDelete: ClothingItem? = null,
     val itemToEdit: ClothingItem? = null,
-    val userMessage: String? = null
+    val userMessage: String? = null,
+    val isAiCategorizing: Boolean = false,
+    val aiCategorizationMessage: String? = null,
+    val isAiCategorizationEnabled: Boolean = true
 )
 
 class DigitalClosetViewModel(
-    private val clothingRepository: ClothingRepository
+    private val clothingRepository: ClothingRepository,
+    private val userPreferencesRepository: UserPreferencesRepository? = null,
+    private val aiAnalysisService: GeminiClothingAnalysisService = GeminiClothingAnalysisService()
 ) : ViewModel() {
 
     private val _selectedCategory = MutableStateFlow<ClothingCategory?>(null)
@@ -36,29 +46,47 @@ class DigitalClosetViewModel(
     private val _itemToDelete = MutableStateFlow<ClothingItem?>(null)
     private val _itemToEdit = MutableStateFlow<ClothingItem?>(null)
     private val _userMessage = MutableStateFlow<String?>(null)
+    private val _isAiCategorizing = MutableStateFlow(false)
+    private val _aiCategorizationMessage = MutableStateFlow<String?>(null)
+
+    private val _aiPreferencesFlow = userPreferencesRepository?.userPreferencesFlow
+        ?.map { it.autoCategorizeWithAi } ?: flowOf(true)
 
     private data class DialogState(
         val isAddOpen: Boolean,
         val itemToDelete: ClothingItem?,
         val itemToEdit: ClothingItem?,
-        val message: String?
+        val message: String?,
+        val isAiCategorizing: Boolean,
+        val aiCategorizationMessage: String?
     )
 
     private val _dialogState = combine(
         _isAddDialogOpen,
         _itemToDelete,
         _itemToEdit,
-        _userMessage
-    ) { isAddOpen, deleteItem, editItem, message ->
-        DialogState(isAddOpen, deleteItem, editItem, message)
+        _userMessage,
+        _isAiCategorizing,
+        _aiCategorizationMessage
+    ) { args: Array<Any?> ->
+        @Suppress("UNCHECKED_CAST")
+        DialogState(
+            isAddOpen = args[0] as Boolean,
+            itemToDelete = args[1] as ClothingItem?,
+            itemToEdit = args[2] as ClothingItem?,
+            message = args[3] as String?,
+            isAiCategorizing = args[4] as Boolean,
+            aiCategorizationMessage = args[5] as String?
+        )
     }
 
     val uiState: StateFlow<DigitalClosetUiState> = combine(
         clothingRepository.getAllClothingItems(),
         _selectedCategory,
         _searchQuery,
-        _dialogState
-    ) { allItems: List<ClothingItem>, category: ClothingCategory?, query: String, dialogState ->
+        _dialogState,
+        _aiPreferencesFlow
+    ) { allItems, category, query, dialogState, isAiEnabled ->
         val filteredItems = allItems.filter { item ->
             val matchesCategory = (category == null || item.category == category)
             val matchesQuery = query.isBlank() ||
@@ -75,7 +103,10 @@ class DigitalClosetViewModel(
             isAddDialogOpen = dialogState.isAddOpen,
             itemToDelete = dialogState.itemToDelete,
             itemToEdit = dialogState.itemToEdit,
-            userMessage = dialogState.message
+            userMessage = dialogState.message,
+            isAiCategorizing = dialogState.isAiCategorizing,
+            aiCategorizationMessage = dialogState.aiCategorizationMessage,
+            isAiCategorizationEnabled = isAiEnabled
         )
     }.stateIn(
         scope = viewModelScope,
@@ -101,6 +132,44 @@ class DigitalClosetViewModel(
 
     fun setItemToEdit(item: ClothingItem?) {
         _itemToEdit.value = item
+    }
+
+    fun toggleAiCategorization(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository?.updateAutoCategorizeWithAi(enabled)
+        }
+    }
+
+    fun categorizeImageWithAi(
+        context: Context,
+        imageUri: Uri,
+        onResult: (ClothingCategory, String, List<String>, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isAiCategorizing.value = true
+            _aiCategorizationMessage.value = "Gemini está analizando tu prenda..."
+            try {
+                val apiKey = userPreferencesRepository?.userPreferencesFlow?.first()?.geminiApiKey ?: ""
+                val result = aiAnalysisService.categorizeClothingImage(context, imageUri, apiKey)
+                if (result.isSuccess) {
+                    val classification = result.getOrThrow()
+                    onResult(
+                        classification.category,
+                        classification.color,
+                        classification.styleTags,
+                        classification.description
+                    )
+                    _userMessage.value = "✨ Prenda categorizada por Gemini"
+                } else {
+                    _userMessage.value = "No se pudo autocategorizar: ${result.exceptionOrNull()?.message ?: "Verifica tu clave"}"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = "Error al analizar prenda con IA: ${e.message}"
+            } finally {
+                _isAiCategorizing.value = false
+                _aiCategorizationMessage.value = null
+            }
+        }
     }
 
     fun addClothingItem(
@@ -191,12 +260,13 @@ class DigitalClosetViewModel(
 }
 
 class DigitalClosetViewModelFactory(
-    private val repository: ClothingRepository
+    private val repository: ClothingRepository,
+    private val userPreferencesRepository: UserPreferencesRepository? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DigitalClosetViewModel::class.java)) {
-            return DigitalClosetViewModel(repository) as T
+            return DigitalClosetViewModel(repository, userPreferencesRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

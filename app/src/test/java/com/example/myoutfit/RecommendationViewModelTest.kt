@@ -188,6 +188,10 @@ class FakeUserPreferencesRepository : UserPreferencesRepository {
     override suspend fun updateGeminiApiKey(apiKey: String) {
         _prefs.value = _prefs.value.copy(geminiApiKey = apiKey)
     }
+
+    override suspend fun updateAutoCategorizeWithAi(enabled: Boolean) {
+        _prefs.value = _prefs.value.copy(autoCategorizeWithAi = enabled)
+    }
 }
 
 class FakeOutfitRepository : OutfitRepository {

@@ -12,7 +12,7 @@ object ImageStorageManager {
 
     private const val DIRECTORY_NAME = "my_outfit_images"
 
-    private fun getImagesDirectory(context: Context): File {
+    fun getImagesDirectory(context: Context): File {
         val dir = File(context.filesDir, DIRECTORY_NAME)
         if (!dir.exists()) {
             dir.mkdirs()
@@ -40,6 +40,38 @@ object ImageStorageManager {
                 }
             }
             file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun saveRemoteUrl(context: Context, imageUrl: String, fileNamePrefix: String = "img"): String? {
+        return try {
+            if (imageUrl.isBlank()) return null
+            if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+                return imageUrl
+            }
+            val fileName = "${fileNamePrefix}_${UUID.randomUUID()}.jpg"
+            val file = File(getImagesDirectory(context), fileName)
+            val url = java.net.URL(imageUrl)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
+            connection.connect()
+
+            if (connection.responseCode in 200..299) {
+                connection.inputStream.use { input ->
+                    FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                file.absolutePath
+            } else {
+                null
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null

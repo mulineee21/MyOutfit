@@ -3,6 +3,7 @@ package com.example.myoutfit.data.local.preferences
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -16,7 +17,8 @@ val Context.userPreferencesDataStore: DataStore<Preferences> by preferencesDataS
 data class UserPreferences(
     val favoriteStyles: Set<String> = setOf("Casual", "Streetwear", "Gótico", "Colorido", "Formal"),
     val selectedTheme: String = "SYSTEM",
-    val geminiApiKey: String = ""
+    val geminiApiKey: String = "",
+    val autoCategorizeWithAi: Boolean = true
 )
 
 interface UserPreferencesRepository {
@@ -26,6 +28,7 @@ interface UserPreferencesRepository {
     suspend fun removeFavoriteStyle(style: String)
     suspend fun updateSelectedTheme(theme: String)
     suspend fun updateGeminiApiKey(apiKey: String)
+    suspend fun updateAutoCategorizeWithAi(enabled: Boolean)
 }
 
 class UserPreferencesRepositoryImpl(
@@ -36,6 +39,7 @@ class UserPreferencesRepositoryImpl(
         val FAVORITE_STYLES = stringSetPreferencesKey("favorite_styles")
         val SELECTED_THEME = stringPreferencesKey("selected_theme")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val AUTO_CATEGORIZE_WITH_AI = booleanPreferencesKey("auto_categorize_with_ai")
     }
 
     override val userPreferencesFlow: Flow<UserPreferences> = context.userPreferencesDataStore.data
@@ -45,10 +49,12 @@ class UserPreferencesRepositoryImpl(
             val theme = preferences[PreferencesKeys.SELECTED_THEME] ?: "SYSTEM"
             val geminiKey = preferences[PreferencesKeys.GEMINI_API_KEY]?.ifBlank { null }
                 ?: BuildConfig.GEMINI_API_KEY
+            val autoCategorize = preferences[PreferencesKeys.AUTO_CATEGORIZE_WITH_AI] ?: true
             UserPreferences(
                 favoriteStyles = favoriteStyles,
                 selectedTheme = theme,
-                geminiApiKey = geminiKey
+                geminiApiKey = geminiKey,
+                autoCategorizeWithAi = autoCategorize
             )
         }
 
@@ -81,6 +87,12 @@ class UserPreferencesRepositoryImpl(
     override suspend fun updateGeminiApiKey(apiKey: String) {
         context.userPreferencesDataStore.edit { preferences ->
             preferences[PreferencesKeys.GEMINI_API_KEY] = apiKey.trim()
+        }
+    }
+
+    override suspend fun updateAutoCategorizeWithAi(enabled: Boolean) {
+        context.userPreferencesDataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_CATEGORIZE_WITH_AI] = enabled
         }
     }
 }

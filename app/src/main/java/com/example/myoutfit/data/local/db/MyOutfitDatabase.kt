@@ -10,19 +10,22 @@ import com.example.myoutfit.data.local.dao.ClothingDao
 import com.example.myoutfit.data.local.dao.InspirationDao
 import com.example.myoutfit.data.local.dao.LoggedOutfitDao
 import com.example.myoutfit.data.local.dao.OutfitDao
+import com.example.myoutfit.data.local.dao.WishlistDao
 import com.example.myoutfit.data.local.entity.ClothingItem
 import com.example.myoutfit.data.local.entity.InspirationItem
 import com.example.myoutfit.data.local.entity.LoggedOutfit
 import com.example.myoutfit.data.local.entity.Outfit
+import com.example.myoutfit.data.local.entity.WishlistItem
 
 @Database(
     entities = [
         ClothingItem::class,
         Outfit::class,
         InspirationItem::class,
-        LoggedOutfit::class
+        LoggedOutfit::class,
+        WishlistItem::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +35,7 @@ abstract class MyOutfitDatabase : RoomDatabase() {
     abstract fun outfitDao(): OutfitDao
     abstract fun inspirationDao(): InspirationDao
     abstract fun loggedOutfitDao(): LoggedOutfitDao
+    abstract fun wishlistDao(): WishlistDao
 
     companion object {
         @Volatile

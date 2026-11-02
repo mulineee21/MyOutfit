@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Style
@@ -87,7 +88,8 @@ import java.util.Locale
 @Composable
 fun LogAndFavoritesScreen(
     viewModel: LogAndFavoritesViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenBackup: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -120,6 +122,15 @@ fun LogAndFavoritesScreen(
                         Text(
                             text = "Diario y Favoritos",
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenBackup) {
+                        Icon(
+                            imageVector = Icons.Default.SettingsBackupRestore,
+                            contentDescription = "Copia de Seguridad y Migración",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },

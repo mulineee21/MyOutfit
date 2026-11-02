@@ -34,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
@@ -42,12 +43,15 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.outlined.Checkroom
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -61,6 +65,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -99,7 +104,8 @@ fun ClothingCategory.getDisplayName(): String = this.displayName
 @Composable
 fun DigitalClosetScreen(
     viewModel: DigitalClosetViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenBackup: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -129,6 +135,15 @@ fun DigitalClosetScreen(
                         Text(
                             text = "Armario Digital",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenBackup) {
+                        Icon(
+                            imageVector = Icons.Default.SettingsBackupRestore,
+                            contentDescription = "Copia de Seguridad y Migración",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -215,6 +230,13 @@ fun DigitalClosetScreen(
     // Add Clothing Dialog
     if (uiState.isAddDialogOpen) {
         AddClothingDialog(
+            isAiCategorizing = uiState.isAiCategorizing,
+            aiCategorizationMessage = uiState.aiCategorizationMessage,
+            isAiCategorizationEnabled = uiState.isAiCategorizationEnabled,
+            onToggleAiCategorization = viewModel::toggleAiCategorization,
+            onCategorizeWithAi = { uri, onResult ->
+                viewModel.categorizeImageWithAi(context, uri, onResult)
+            },
             onDismiss = { viewModel.setAddDialogOpen(false) },
             onSave = { imageUri, category, color, styleTags, description ->
                 viewModel.addClothingItem(context, imageUri, category, color, styleTags, description)
@@ -508,6 +530,11 @@ fun EmptyClosetView(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AddClothingDialog(
+    isAiCategorizing: Boolean = false,
+    aiCategorizationMessage: String? = null,
+    isAiCategorizationEnabled: Boolean = true,
+    onToggleAiCategorization: (Boolean) -> Unit = {},
+    onCategorizeWithAi: (Uri, (ClothingCategory, String, List<String>, String) -> Unit) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
     onSave: (
         imageUri: Uri?,
@@ -530,12 +557,28 @@ fun AddClothingDialog(
 
     var description by remember { mutableStateOf("") }
 
+    val onImageChosen: (Uri) -> Unit = { uri ->
+        selectedImageUri = uri
+        if (isAiCategorizationEnabled) {
+            onCategorizeWithAi(uri) { cat, col, tags, desc ->
+                selectedCategory = cat
+                if (col.isNotBlank()) {
+                    selectedColor = col
+                    customColorInput = col
+                }
+                selectedStyleTags.clear()
+                selectedStyleTags.addAll(tags)
+                if (desc.isNotBlank()) description = desc
+            }
+        }
+    }
+
     // Camera launcher
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success && tempCameraUri != null) {
-            selectedImageUri = tempCameraUri
+            onImageChosen(tempCameraUri!!)
         }
     }
 
@@ -544,7 +587,7 @@ fun AddClothingDialog(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            selectedImageUri = uri
+            onImageChosen(uri)
         }
     }
 
@@ -637,6 +680,86 @@ fun AddClothingDialog(
                         Icon(imageVector = Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Galería")
+                    }
+                }
+
+                // AI Categorization Option Card
+                Spacer(modifier = Modifier.height(14.dp))
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Categorizar con IA (Gemini)",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                            Switch(
+                                checked = isAiCategorizationEnabled,
+                                onCheckedChange = onToggleAiCategorization
+                            )
+                        }
+
+                        Text(
+                            text = if (isAiCategorizationEnabled)
+                                "Gemini detectará la categoría, color principal, estilos (#gótico, #deporte...) y detalles automáticamente."
+                            else
+                                "Autocategorización desactivada. Puedes elegir manualmente tus opciones.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (isAiCategorizationEnabled && selectedImageUri != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    selectedImageUri?.let { uri ->
+                                        onCategorizeWithAi(uri) { cat, col, tags, desc ->
+                                            selectedCategory = cat
+                                            if (col.isNotBlank()) {
+                                                selectedColor = col
+                                                customColorInput = col
+                                            }
+                                            selectedStyleTags.clear()
+                                            selectedStyleTags.addAll(tags)
+                                            if (desc.isNotBlank()) description = desc
+                                        }
+                                    }
+                                },
+                                enabled = !isAiCategorizing,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isAiCategorizing) {
+                                    CircularProgressIndicator(
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(aiCategorizationMessage ?: "Analizando con Gemini...")
+                                } else {
+                                    Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("✨ Analizar foto con Gemini")
+                                }
+                            }
+                        }
                     }
                 }
 
