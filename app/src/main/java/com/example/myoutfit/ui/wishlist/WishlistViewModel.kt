@@ -28,6 +28,7 @@ data class WishlistUiState(
     val selectedStore: String? = null,
     val searchQuery: String = "",
     val isAddDialogOpen: Boolean = false,
+    val initialAddUrl: String? = null,
     val itemToDelete: WishlistItem? = null,
     val itemToEdit: WishlistItem? = null,
     val itemToMoveToCloset: WishlistItem? = null,
@@ -49,6 +50,7 @@ class WishlistViewModel(
     private val _selectedStore = MutableStateFlow<String?>(null)
     private val _searchQuery = MutableStateFlow("")
     private val _isAddDialogOpen = MutableStateFlow(false)
+    private val _initialAddUrl = MutableStateFlow<String?>(null)
     private val _itemToDelete = MutableStateFlow<WishlistItem?>(null)
     private val _itemToEdit = MutableStateFlow<WishlistItem?>(null)
     private val _itemToMoveToCloset = MutableStateFlow<WishlistItem?>(null)
@@ -59,6 +61,7 @@ class WishlistViewModel(
 
     private data class DialogState(
         val isAddOpen: Boolean,
+        val initialUrl: String?,
         val itemToDelete: WishlistItem?,
         val itemToEdit: WishlistItem?,
         val itemToMove: WishlistItem?,
@@ -70,6 +73,7 @@ class WishlistViewModel(
 
     private val _dialogState = combine(
         _isAddDialogOpen,
+        _initialAddUrl,
         _itemToDelete,
         _itemToEdit,
         _itemToMoveToCloset,
@@ -81,13 +85,14 @@ class WishlistViewModel(
         @Suppress("UNCHECKED_CAST")
         DialogState(
             isAddOpen = args[0] as Boolean,
-            itemToDelete = args[1] as WishlistItem?,
-            itemToEdit = args[2] as WishlistItem?,
-            itemToMove = args[3] as WishlistItem?,
-            isAnalyzing = args[4] as Boolean,
-            progressText = args[5] as String?,
-            preview = args[6] as ProductAiAnalysis?,
-            message = args[7] as String?
+            initialUrl = args[1] as String?,
+            itemToDelete = args[2] as WishlistItem?,
+            itemToEdit = args[3] as WishlistItem?,
+            itemToMove = args[4] as WishlistItem?,
+            isAnalyzing = args[5] as Boolean,
+            progressText = args[6] as String?,
+            preview = args[7] as ProductAiAnalysis?,
+            message = args[8] as String?
         )
     }
 
@@ -121,6 +126,7 @@ class WishlistViewModel(
             selectedStore = selectedStore,
             searchQuery = query,
             isAddDialogOpen = dialogState.isAddOpen,
+            initialAddUrl = dialogState.initialUrl,
             itemToDelete = dialogState.itemToDelete,
             itemToEdit = dialogState.itemToEdit,
             itemToMoveToCloset = dialogState.itemToMove,
@@ -149,6 +155,7 @@ class WishlistViewModel(
 
     fun openAddDialog(initialUrl: String? = null) {
         _analyzedPreview.value = null
+        _initialAddUrl.value = initialUrl
         _isAddDialogOpen.value = true
         if (!initialUrl.isNullOrBlank()) {
             analyzeUrl(initialUrl)
@@ -157,6 +164,7 @@ class WishlistViewModel(
 
     fun closeAddDialog() {
         _isAddDialogOpen.value = false
+        _initialAddUrl.value = null
         _analyzedPreview.value = null
         _isAnalyzing.value = false
     }
@@ -181,27 +189,34 @@ class WishlistViewModel(
 
         viewModelScope.launch {
             _isAnalyzing.value = true
-            _analysisProgressText.value = "Obteniendo datos de la prenda..."
+            _analysisProgressText.value = "Obteniendo foto y datos del producto..."
 
             try {
                 val metadata = metadataExtractor.extractMetadata(url)
-                _analysisProgressText.value = "Analizando estilo y categoría con IA..."
+
+                // Instantly display extracted image and basic product info
+                _analyzedPreview.value = ProductAiAnalysis(
+                    title = metadata.title.ifBlank { "Prenda de ${metadata.storeName}" },
+                    category = "Moda",
+                    styleTags = listOf("Casual"),
+                    color = "",
+                    description = metadata.description,
+                    price = metadata.price,
+                    storeName = metadata.storeName,
+                    imageUrl = metadata.imageUrl,
+                    productUrl = metadata.finalUrl.ifBlank { url }
+                )
+
+                _analysisProgressText.value = "Analizando estilo con IA (#gótico, #deporte...)..."
 
                 val prefs = userPreferencesRepository.userPreferencesFlow.first()
                 val analysisResult = aiAnalysisService.analyzeProductLink(url, metadata, prefs.geminiApiKey)
 
                 if (analysisResult.isSuccess) {
-                    _analyzedPreview.value = analysisResult.getOrThrow()
-                } else {
-                    _analyzedPreview.value = ProductAiAnalysis(
-                        title = metadata.title.ifBlank { "Prenda ${metadata.storeName}" },
-                        category = "Moda",
-                        styleTags = listOf("Casual"),
-                        color = "",
-                        description = metadata.description,
-                        price = metadata.price,
-                        storeName = metadata.storeName,
-                        imageUrl = metadata.imageUrl
+                    val ai = analysisResult.getOrThrow()
+                    _analyzedPreview.value = ai.copy(
+                        imageUrl = ai.imageUrl.ifBlank { metadata.imageUrl },
+                        productUrl = metadata.finalUrl.ifBlank { url }
                     )
                 }
             } catch (e: Exception) {

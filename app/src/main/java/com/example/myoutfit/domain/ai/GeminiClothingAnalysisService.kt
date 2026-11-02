@@ -37,7 +37,8 @@ data class ProductAiAnalysis(
     val description: String,
     val price: String,
     val storeName: String,
-    val imageUrl: String
+    val imageUrl: String,
+    val productUrl: String = ""
 )
 
 class GeminiClothingAnalysisService(
@@ -455,7 +456,8 @@ class GeminiClothingAnalysisService(
             description = description,
             price = price,
             storeName = store,
-            imageUrl = metadata.imageUrl
+            imageUrl = metadata.imageUrl,
+            productUrl = metadata.finalUrl.ifBlank { metadata.originalUrl }
         )
     }
 
@@ -502,7 +504,8 @@ class GeminiClothingAnalysisService(
             description = metadata.description.ifBlank { "Prenda guardada desde ${metadata.storeName}" },
             price = metadata.price,
             storeName = metadata.storeName,
-            imageUrl = metadata.imageUrl
+            imageUrl = metadata.imageUrl,
+            productUrl = metadata.finalUrl.ifBlank { url }
         )
     }
 

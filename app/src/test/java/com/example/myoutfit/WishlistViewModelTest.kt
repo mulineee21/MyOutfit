@@ -182,4 +182,22 @@ class WishlistViewModelTest {
         assertEquals("Bershka", extractor.detectStoreFromUrl("https://www.bershka.com/es/camisa-c0p123.html"))
         assertEquals("AliExpress", extractor.detectStoreFromUrl("https://es.aliexpress.com/item/100500123.html"))
     }
+
+    @Test
+    fun productMetadataExtractor_extractsAmazonAsinCorrectly() {
+        val extractor = ProductMetadataExtractor()
+
+        assertEquals("B08N5WRWNW", extractor.extractAmazonAsin("https://www.amazon.es/dp/B08N5WRWNW"))
+        assertEquals("B07XYZ1234", extractor.extractAmazonAsin("https://www.amazon.com/gp/product/B07XYZ1234?ref_=123"))
+        assertEquals("B09ABC5678", extractor.extractAmazonAsin("https://www.amazon.es/sudadera-negra/dp/B09ABC5678/ref=sr_1_1"))
+    }
+
+    @Test
+    fun productMetadataExtractor_extractsAmazonImageDirectly() = runTest {
+        val extractor = ProductMetadataExtractor()
+        val metadata = extractor.extractMetadata("https://www.amazon.es/dp/B08N5WRWNW")
+
+        assertEquals("Amazon", metadata.storeName)
+        assertTrue(metadata.imageUrl.contains("B08N5WRWNW"))
+    }
 }

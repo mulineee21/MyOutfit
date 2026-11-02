@@ -92,6 +92,7 @@ import coil.request.ImageRequest
 import com.example.myoutfit.data.local.entity.ClothingCategory
 import com.example.myoutfit.data.local.entity.WishlistItem
 import com.example.myoutfit.domain.ai.ProductAiAnalysis
+import kotlinx.coroutines.delay
 
 private val PRESET_WISHLIST_STYLES = listOf(
     "Gótico",
@@ -210,6 +211,7 @@ fun WishlistScreen(
     // Dialogs
     if (uiState.isAddDialogOpen) {
         AddWishlistDialog(
+            initialUrl = uiState.initialAddUrl,
             isAnalyzing = uiState.isAnalyzing,
             progressText = uiState.analysisProgressText,
             preview = uiState.analyzedPreview,
@@ -654,6 +656,7 @@ private fun WishlistItemCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddWishlistDialog(
+    initialUrl: String? = null,
     isAnalyzing: Boolean,
     progressText: String?,
     preview: ProductAiAnalysis?,
@@ -672,7 +675,8 @@ private fun AddWishlistDialog(
     ) -> Unit
 ) {
     val context = LocalContext.current
-    var urlInput by remember { mutableStateOf("") }
+    var urlInput by remember { mutableStateOf(initialUrl ?: "") }
+    var lastAnalyzedUrl by remember { mutableStateOf(initialUrl ?: "") }
     var title by remember { mutableStateOf("") }
     var imageUrl by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -682,8 +686,41 @@ private fun AddWishlistDialog(
     var price by remember { mutableStateOf("") }
     val styleTags = remember { mutableStateListOf<String>() }
     var customTagInput by remember { mutableStateOf("") }
+    var showManualPhotoEdit by remember { mutableStateOf(false) }
 
-    // When AI analyzes the product, update the fields automatically
+    // Automatic trigger: whenever user types or pastes a valid link, fetch metadata & photo automatically
+    LaunchedEffect(urlInput) {
+        val trimmed = urlInput.trim()
+        val isValidUrl = trimmed.isNotBlank() && (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.contains("shein", ignoreCase = true) ||
+            trimmed.contains("amazon", ignoreCase = true) ||
+            trimmed.contains("zara", ignoreCase = true) ||
+            trimmed.contains("aliexpress", ignoreCase = true) ||
+            trimmed.contains("pullandbear", ignoreCase = true) ||
+            trimmed.contains("bershka", ignoreCase = true) ||
+            trimmed.contains("stradivarius", ignoreCase = true) ||
+            trimmed.contains("asos", ignoreCase = true) ||
+            trimmed.contains(".com", ignoreCase = true) ||
+            trimmed.contains(".es", ignoreCase = true)
+        )
+
+        if (isValidUrl && trimmed != lastAnalyzedUrl && !isAnalyzing) {
+            // Short delay if typing, almost immediate if pasting
+            if (trimmed.length > 25) {
+                delay(200)
+            } else {
+                delay(600)
+            }
+            if (trimmed != lastAnalyzedUrl) {
+                lastAnalyzedUrl = trimmed
+                onAnalyze(trimmed)
+            }
+        }
+    }
+
+    // When product is analyzed, update image and fields automatically
     LaunchedEffect(preview) {
         preview?.let { p ->
             title = p.title
@@ -693,6 +730,9 @@ private fun AddWishlistDialog(
             if (p.category.isNotBlank()) category = p.category
             if (p.color.isNotBlank()) color = p.color
             if (p.price.isNotBlank()) price = p.price
+            if (p.productUrl.isNotBlank() && urlInput.isBlank()) {
+                urlInput = p.productUrl
+            }
             styleTags.clear()
             styleTags.addAll(p.styleTags)
         }
@@ -736,7 +776,7 @@ private fun AddWishlistDialog(
                     OutlinedTextField(
                         value = urlInput,
                         onValueChange = { urlInput = it },
-                        placeholder = { Text("https://shein.com/...", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("Pega el enlace aquí...", style = MaterialTheme.typography.bodySmall) },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                         trailingIcon = {
@@ -746,6 +786,7 @@ private fun AddWishlistDialog(
                                 if (clip != null && clip.itemCount > 0) {
                                     val text = clip.getItemAt(0).text?.toString() ?: ""
                                     urlInput = text
+                                    lastAnalyzedUrl = text
                                     onAnalyze(text)
                                 }
                             }) {
@@ -757,8 +798,12 @@ private fun AddWishlistDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Progress / manual trigger button
                 Button(
-                    onClick = { onAnalyze(urlInput) },
+                    onClick = {
+                        lastAnalyzedUrl = urlInput.trim()
+                        onAnalyze(urlInput.trim())
+                    },
                     enabled = urlInput.isNotBlank() && !isAnalyzing,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
@@ -770,63 +815,136 @@ private fun AddWishlistDialog(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(progressText ?: "Analizando con IA...")
+                        Text(progressText ?: "Obteniendo foto y estilo...")
                     } else {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("✨ Extraer y Analizar con IA")
+                        Text("✨ Analizar y Cargar Foto")
                     }
                 }
 
-                // If loading indicator
-                AnimatedVisibility(visible = isAnalyzing) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Extrayendo imagen, descripción y clasificando estilo...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Image Preview
+                // Automatic Product Photo Preview Card
                 if (imageUrl.isNotBlank()) {
-                    Box(
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
+                            .padding(vertical = 4.dp)
                     ) {
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = "Foto prenda",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .background(MaterialTheme.colorScheme.surface),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(imageUrl)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "Foto prenda",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                if (storeName.isNotBlank()) {
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.75f),
+                                        shape = RoundedCornerShape(bottomEnd = 10.dp, topStart = 14.dp),
+                                        modifier = Modifier.align(Alignment.TopStart)
+                                    ) {
+                                        Text(
+                                            text = storeName,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Foto obtenida automáticamente de la tienda",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                } else if (isAnalyzing) {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Obteniendo foto del producto automáticamente...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
 
-                OutlinedTextField(
-                    value = imageUrl,
-                    onValueChange = { imageUrl = it },
-                    label = { Text("URL de la Foto") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Optional button to edit photo URL manually (hidden by default)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { showManualPhotoEdit = !showManualPhotoEdit }) {
+                        Text(
+                            text = if (showManualPhotoEdit) "Ocultar URL de foto" else "✏️ Cambiar foto manualmente (opcional)",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
 
+                AnimatedVisibility(visible = showManualPhotoEdit) {
+                    OutlinedTextField(
+                        value = imageUrl,
+                        onValueChange = { imageUrl = it },
+                        label = { Text("URL de la Foto") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                HorizontalDivider()
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
