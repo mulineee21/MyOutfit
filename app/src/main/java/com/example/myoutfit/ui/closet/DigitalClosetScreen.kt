@@ -95,6 +95,8 @@ import com.example.myoutfit.data.local.entity.ClothingItem
 import com.example.myoutfit.ui.theme.MyOutfitTheme
 import com.example.myoutfit.util.UriUtils
 
+import androidx.compose.material.icons.filled.AccountCircle
+
 val PRESET_COLORS = listOf("Negro", "Blanco", "Gris", "Rojo", "Azul", "Verde", "Amarillo", "Rosa", "Beige", "Marrón")
 val PRESET_STYLE_TAGS = listOf("Gótico", "Colorido", "Casual", "Formal", "Streetwear", "Vintage", "Elegante", "Deportivo", "Minimalista")
 
@@ -105,7 +107,8 @@ fun ClothingCategory.getDisplayName(): String = this.displayName
 fun DigitalClosetScreen(
     viewModel: DigitalClosetViewModel,
     modifier: Modifier = Modifier,
-    onOpenBackup: () -> Unit = {}
+    onOpenBackup: () -> Unit = {},
+    onOpenProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -139,6 +142,13 @@ fun DigitalClosetScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenProfile) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "Mi Perfil",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = onOpenBackup) {
                         Icon(
                             imageVector = Icons.Default.SettingsBackupRestore,

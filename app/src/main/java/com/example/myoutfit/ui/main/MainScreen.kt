@@ -49,16 +49,23 @@ import com.example.myoutfit.ui.wishlist.WishlistScreen
 import com.example.myoutfit.ui.wishlist.WishlistViewModel
 import com.example.myoutfit.ui.wishlist.WishlistViewModelFactory
 
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Person
+import com.example.myoutfit.ui.profile.ProfileScreen
+import com.example.myoutfit.ui.profile.ProfileViewModel
+import com.example.myoutfit.ui.profile.ProfileViewModelFactory
+
 enum class MainTab(
     val title: String,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
     CLOSET("Armario", Icons.Filled.Checkroom, Icons.Outlined.Checkroom),
-    RECOMMENDATION("Recomendador", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
+    RECOMMENDATION("Recomendar", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
     WISHLIST("Deseos", Icons.Filled.CardGiftcard, Icons.Outlined.CardGiftcard),
     LOOKBOOK("Inspiración", Icons.Filled.Style, Icons.Outlined.Style),
-    LOG_FAVORITES("Diario", Icons.AutoMirrored.Filled.EventNote, Icons.AutoMirrored.Outlined.EventNote)
+    LOG_FAVORITES("Diario", Icons.AutoMirrored.Filled.EventNote, Icons.AutoMirrored.Outlined.EventNote),
+    PROFILE("Perfil", Icons.Filled.Person, Icons.Outlined.Person)
 }
 
 @Composable
@@ -120,6 +127,18 @@ fun MainScreen(
         }
     )
 
+    val profileViewModel: ProfileViewModel = viewModel(
+        factory = remember {
+            ProfileViewModelFactory(
+                userPreferencesRepository = app.userPreferencesRepository,
+                loggedOutfitRepository = app.loggedOutfitRepository,
+                outfitRepository = app.outfitRepository,
+                clothingRepository = app.clothingRepository,
+                wishlistRepository = app.wishlistRepository
+            )
+        }
+    )
+
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var showBackupDialog by remember { mutableStateOf(false) }
 
@@ -153,7 +172,8 @@ fun MainScreen(
             0 -> DigitalClosetScreen(
                 viewModel = closetViewModel,
                 modifier = Modifier.padding(innerPadding),
-                onOpenBackup = { showBackupDialog = true }
+                onOpenBackup = { showBackupDialog = true },
+                onOpenProfile = { selectedTabIndex = MainTab.PROFILE.ordinal }
             )
             1 -> RecommendationScreen(
                 viewModel = recommendationViewModel,
@@ -172,6 +192,14 @@ fun MainScreen(
             4 -> LogAndFavoritesScreen(
                 viewModel = logAndFavoritesViewModel,
                 modifier = Modifier.padding(innerPadding),
+                onOpenBackup = { showBackupDialog = true }
+            )
+            5 -> ProfileScreen(
+                viewModel = profileViewModel,
+                modifier = Modifier.padding(innerPadding),
+                onNavigateToDiary = { selectedTabIndex = MainTab.LOG_FAVORITES.ordinal },
+                onNavigateToCloset = { selectedTabIndex = MainTab.CLOSET.ordinal },
+                onNavigateToWishlist = { selectedTabIndex = MainTab.WISHLIST.ordinal },
                 onOpenBackup = { showBackupDialog = true }
             )
         }

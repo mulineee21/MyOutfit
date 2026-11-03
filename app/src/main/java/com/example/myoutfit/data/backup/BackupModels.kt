@@ -76,7 +76,10 @@ data class UserPreferencesBackupDto(
     val favoriteStyles: List<String>,
     val selectedTheme: String,
     val geminiApiKey: String,
-    val autoCategorizeWithAi: Boolean
+    val autoCategorizeWithAi: Boolean,
+    val userName: String = "Joel Molina",
+    val profileImagePath: String = "",
+    val bio: String = ""
 )
 
 data class BackupStats(

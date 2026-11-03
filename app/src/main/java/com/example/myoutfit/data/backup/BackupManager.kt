@@ -187,11 +187,15 @@ class BackupManager(
         }
 
         // 6. User preferences DTO
+        val profileImageFileName = archiveImage(userPrefs.profileImagePath, "profile")
         val prefsDto = UserPreferencesBackupDto(
             favoriteStyles = userPrefs.favoriteStyles.toList(),
             selectedTheme = userPrefs.selectedTheme,
             geminiApiKey = userPrefs.geminiApiKey,
-            autoCategorizeWithAi = userPrefs.autoCategorizeWithAi
+            autoCategorizeWithAi = userPrefs.autoCategorizeWithAi,
+            userName = userPrefs.userName,
+            profileImagePath = profileImageFileName,
+            bio = userPrefs.bio
         )
 
         val backupData = MyOutfitBackup(
@@ -360,6 +364,18 @@ class BackupManager(
 
         // 6. Restore User Preferences
         backup.userPreferences?.let { p ->
+            if (p.userName.isNotBlank()) {
+                userPreferencesRepository.updateUserName(p.userName)
+            }
+            if (p.bio.isNotBlank()) {
+                userPreferencesRepository.updateBio(p.bio)
+            }
+            if (p.profileImagePath.isNotBlank()) {
+                val resolvedProfilePath = restoredImageMap[p.profileImagePath] ?: ""
+                if (resolvedProfilePath.isNotBlank()) {
+                    userPreferencesRepository.updateProfileImagePath(resolvedProfilePath)
+                }
+            }
             if (p.favoriteStyles.isNotEmpty()) {
                 userPreferencesRepository.updateFavoriteStyles(p.favoriteStyles.toSet())
             }

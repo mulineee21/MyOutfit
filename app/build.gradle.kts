@@ -15,8 +15,8 @@ android {
         applicationId = "com.joelmolina.myoutfit"
         minSdk = 30
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         buildConfigField("String", "APP_AUTHOR", "\"Joel Molina\"")
         buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: System.getenv("GEMINI_API_KEY") ?: ""}\"")

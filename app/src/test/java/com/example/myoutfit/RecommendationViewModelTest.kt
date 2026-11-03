@@ -169,6 +169,18 @@ class FakeUserPreferencesRepository : UserPreferencesRepository {
 
     override val userPreferencesFlow: Flow<UserPreferences> = _prefs
 
+    override suspend fun updateUserName(name: String) {
+        _prefs.value = _prefs.value.copy(userName = name)
+    }
+
+    override suspend fun updateProfileImagePath(imagePath: String) {
+        _prefs.value = _prefs.value.copy(profileImagePath = imagePath)
+    }
+
+    override suspend fun updateBio(bio: String) {
+        _prefs.value = _prefs.value.copy(bio = bio)
+    }
+
     override suspend fun updateFavoriteStyles(styles: Set<String>) {
         _prefs.value = _prefs.value.copy(favoriteStyles = styles)
     }
