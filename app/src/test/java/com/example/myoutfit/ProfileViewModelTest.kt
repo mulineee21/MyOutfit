@@ -177,4 +177,69 @@ class ProfileViewModelTest {
         assertEquals("AIzaSyFakeKey12345", state.geminiApiKey)
         assertFalse(state.isApiKeyDialogOpen)
     }
+
+    @Test
+    fun socialConnectedProfile_syncsAccountNameAndEnforcesMonthlyCooldown() = runTest {
+        val fakeSocial = FakeSocialRepository()
+        fakeSocial.login("joelmolinanavarro21", "pass1234")
+
+        val syncedVm = ProfileViewModel(
+            userPreferencesRepository = fakeUserPreferencesRepository,
+            loggedOutfitRepository = fakeLoggedOutfitRepository,
+            outfitRepository = fakeOutfitRepository,
+            clothingRepository = fakeClothingRepository,
+            wishlistRepository = fakeWishlistRepository,
+            socialRepository = fakeSocial
+        )
+
+        backgroundScope.launch { syncedVm.uiState.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // 1. El perfil refleja automáticamente el nombre de la cuenta activa
+        assertEquals("joelmolinanavarro21", syncedVm.uiState.value.userName)
+        assertTrue(syncedVm.uiState.value.canChangeUsername)
+
+        // 2. Primer cambio de nombre: permitido y activa bloqueo de 30 días
+        syncedVm.openChangeUsernameDialog()
+        syncedVm.changeAccountUsername("joel_molina")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("joel_molina", syncedVm.uiState.value.userName)
+        assertFalse(syncedVm.uiState.value.canChangeUsername)
+        assertEquals(30, syncedVm.uiState.value.usernameCooldownDaysRemaining)
+
+        // 3. Segundo intento en el mismo mes: rechazado por el límite mensual
+        syncedVm.openChangeUsernameDialog()
+        syncedVm.changeAccountUsername("otro_nombre")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("joel_molina", syncedVm.uiState.value.userName)
+        assertTrue(syncedVm.uiState.value.usernameDialogError?.contains("1 vez al mes") == true)
+    }
+
+    @Test
+    fun deleteSocialAccount_executesGdprDeletionAndLogsOut() = runTest {
+        val fakeSocial = FakeSocialRepository()
+        fakeSocial.login("joel_rgpd", "pass1234")
+
+        val syncedVm = ProfileViewModel(
+            userPreferencesRepository = fakeUserPreferencesRepository,
+            loggedOutfitRepository = fakeLoggedOutfitRepository,
+            outfitRepository = fakeOutfitRepository,
+            clothingRepository = fakeClothingRepository,
+            wishlistRepository = fakeWishlistRepository,
+            socialRepository = fakeSocial
+        )
+
+        backgroundScope.launch { syncedVm.uiState.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(syncedVm.uiState.value.isSocialConnected)
+
+        syncedVm.deleteSocialAccount()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(fakeSocial.deleteAccountCalled)
+        assertFalse(syncedVm.uiState.value.isSocialConnected)
+        assertTrue(syncedVm.uiState.value.userMessage?.contains("Art. 17 RGPD") == true)
+    }
 }

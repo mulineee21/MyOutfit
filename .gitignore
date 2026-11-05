@@ -22,3 +22,10 @@ app/build/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Backend (Self-hosted Debian Server)
+backend/.env
+backend/node_modules/
+backend/dist/
+backend/media_dev/
+

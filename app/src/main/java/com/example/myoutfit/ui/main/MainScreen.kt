@@ -3,15 +3,17 @@ package com.example.myoutfit.ui.main
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.EventNote
-import androidx.compose.material.icons.automirrored.outlined.EventNote
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Checkroom
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -42,29 +44,29 @@ import com.example.myoutfit.ui.inspiration.InspirationViewModelFactory
 import com.example.myoutfit.ui.logfavorites.LogAndFavoritesScreen
 import com.example.myoutfit.ui.logfavorites.LogAndFavoritesViewModel
 import com.example.myoutfit.ui.logfavorites.LogAndFavoritesViewModelFactory
-import com.example.myoutfit.ui.recommendation.RecommendationScreen
-import com.example.myoutfit.ui.recommendation.RecommendationViewModel
-import com.example.myoutfit.ui.recommendation.RecommendationViewModelFactory
-import com.example.myoutfit.ui.wishlist.WishlistScreen
-import com.example.myoutfit.ui.wishlist.WishlistViewModel
-import com.example.myoutfit.ui.wishlist.WishlistViewModelFactory
-
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.Person
 import com.example.myoutfit.ui.profile.ProfileScreen
 import com.example.myoutfit.ui.profile.ProfileViewModel
 import com.example.myoutfit.ui.profile.ProfileViewModelFactory
+import com.example.myoutfit.ui.recommendation.RecommendationScreen
+import com.example.myoutfit.ui.recommendation.RecommendationViewModel
+import com.example.myoutfit.ui.recommendation.RecommendationViewModelFactory
+import com.example.myoutfit.ui.social.SocialFeedScreen
+import com.example.myoutfit.ui.social.SocialFeedViewModel
+import com.example.myoutfit.ui.social.SocialFeedViewModelFactory
+import com.example.myoutfit.ui.wishlist.WishlistScreen
+import com.example.myoutfit.ui.wishlist.WishlistViewModel
+import com.example.myoutfit.ui.wishlist.WishlistViewModelFactory
 
 enum class MainTab(
     val title: String,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
+    SOCIAL("24h", Icons.Filled.Groups, Icons.Outlined.Groups),
     CLOSET("Armario", Icons.Filled.Checkroom, Icons.Outlined.Checkroom),
-    RECOMMENDATION("Recomendar", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
+    RECOMMENDATION("IA", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
     WISHLIST("Deseos", Icons.Filled.CardGiftcard, Icons.Outlined.CardGiftcard),
-    LOOKBOOK("Inspiración", Icons.Filled.Style, Icons.Outlined.Style),
-    LOG_FAVORITES("Diario", Icons.AutoMirrored.Filled.EventNote, Icons.AutoMirrored.Outlined.EventNote),
+    LOOKBOOK("Looks", Icons.Filled.Style, Icons.Outlined.Style),
     PROFILE("Perfil", Icons.Filled.Person, Icons.Outlined.Person)
 }
 
@@ -75,6 +77,15 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as MyOutfitApplication
+
+    val socialFeedViewModel: SocialFeedViewModel = viewModel(
+        factory = remember {
+            SocialFeedViewModelFactory(
+                socialRepository = app.socialRepository,
+                loggedOutfitRepository = app.loggedOutfitRepository
+            )
+        }
+    )
 
     val closetViewModel: DigitalClosetViewModel = viewModel(
         factory = remember {
@@ -134,16 +145,19 @@ fun MainScreen(
                 loggedOutfitRepository = app.loggedOutfitRepository,
                 outfitRepository = app.outfitRepository,
                 clothingRepository = app.clothingRepository,
-                wishlistRepository = app.wishlistRepository
+                wishlistRepository = app.wishlistRepository,
+                socialRepository = app.socialRepository
             )
         }
     )
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedTabIndex by remember { mutableIntStateOf(MainTab.SOCIAL.ordinal) }
+    var showDiarySubscreen by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(sharedWishlistUrl) {
         if (!sharedWishlistUrl.isNullOrBlank()) {
+            showDiarySubscreen = false
             selectedTabIndex = MainTab.WISHLIST.ordinal
         }
     }
@@ -153,13 +167,17 @@ fun MainScreen(
         bottomBar = {
             NavigationBar {
                 MainTab.entries.forEachIndexed { index, tab ->
+                    val isSelected = !showDiarySubscreen && selectedTabIndex == index
                     NavigationBarItem(
-                        selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
+                        selected = isSelected,
+                        onClick = {
+                            showDiarySubscreen = false
+                            selectedTabIndex = index
+                        },
                         label = { Text(tab.title) },
                         icon = {
                             Icon(
-                                imageVector = if (selectedTabIndex == index) tab.selectedIcon else tab.unselectedIcon,
+                                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
                                 contentDescription = tab.title
                             )
                         }
@@ -168,40 +186,47 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
-        when (selectedTabIndex) {
-            0 -> DigitalClosetScreen(
-                viewModel = closetViewModel,
-                modifier = Modifier.padding(innerPadding),
-                onOpenBackup = { showBackupDialog = true },
-                onOpenProfile = { selectedTabIndex = MainTab.PROFILE.ordinal }
-            )
-            1 -> RecommendationScreen(
-                viewModel = recommendationViewModel,
-                modifier = Modifier.padding(innerPadding)
-            )
-            2 -> WishlistScreen(
-                viewModel = wishlistViewModel,
-                modifier = Modifier.padding(innerPadding),
-                initialSharedUrl = sharedWishlistUrl,
-                onOpenBackup = { showBackupDialog = true }
-            )
-            3 -> InspirationLookbookScreen(
-                viewModel = inspirationViewModel,
-                modifier = Modifier.padding(innerPadding)
-            )
-            4 -> LogAndFavoritesScreen(
+        if (showDiarySubscreen) {
+            LogAndFavoritesScreen(
                 viewModel = logAndFavoritesViewModel,
                 modifier = Modifier.padding(innerPadding),
                 onOpenBackup = { showBackupDialog = true }
             )
-            5 -> ProfileScreen(
-                viewModel = profileViewModel,
-                modifier = Modifier.padding(innerPadding),
-                onNavigateToDiary = { selectedTabIndex = MainTab.LOG_FAVORITES.ordinal },
-                onNavigateToCloset = { selectedTabIndex = MainTab.CLOSET.ordinal },
-                onNavigateToWishlist = { selectedTabIndex = MainTab.WISHLIST.ordinal },
-                onOpenBackup = { showBackupDialog = true }
-            )
+        } else {
+            when (selectedTabIndex) {
+                MainTab.SOCIAL.ordinal -> SocialFeedScreen(
+                    viewModel = socialFeedViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                MainTab.CLOSET.ordinal -> DigitalClosetScreen(
+                    viewModel = closetViewModel,
+                    modifier = Modifier.padding(innerPadding),
+                    onOpenBackup = { showBackupDialog = true },
+                    onOpenProfile = { selectedTabIndex = MainTab.PROFILE.ordinal }
+                )
+                MainTab.RECOMMENDATION.ordinal -> RecommendationScreen(
+                    viewModel = recommendationViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                MainTab.WISHLIST.ordinal -> WishlistScreen(
+                    viewModel = wishlistViewModel,
+                    modifier = Modifier.padding(innerPadding),
+                    initialSharedUrl = sharedWishlistUrl,
+                    onOpenBackup = { showBackupDialog = true }
+                )
+                MainTab.LOOKBOOK.ordinal -> InspirationLookbookScreen(
+                    viewModel = inspirationViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+                MainTab.PROFILE.ordinal -> ProfileScreen(
+                    viewModel = profileViewModel,
+                    modifier = Modifier.padding(innerPadding),
+                    onNavigateToDiary = { showDiarySubscreen = true },
+                    onNavigateToCloset = { selectedTabIndex = MainTab.CLOSET.ordinal },
+                    onNavigateToWishlist = { selectedTabIndex = MainTab.WISHLIST.ordinal },
+                    onOpenBackup = { showBackupDialog = true }
+                )
+            }
         }
     }
 

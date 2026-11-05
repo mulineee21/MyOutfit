@@ -1,0 +1,122 @@
+name: myoutfit-social
+
+services:
+  # ============================================================================
+  # 1. Base de Datos Relacional: PostgreSQL 17
+  # Red interna aislada (sin puertos expuestos al exterior en Debian)
+  # ============================================================================
+  db:
+    image: postgres:17-alpine
+    container_name: myoutfit-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myoutfit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-myoutfit_social}
+      TZ: ${TZ:-Europe/Madrid}
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=64MB
+      -c effective_cache_size=512MB
+      -c log_min_duration_statement=500
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myoutfit} -d ${POSTGRES_DB:-myoutfit_social}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================================
+  # 2. Backend API REST & WebSockets (Node.js 22 + Fastify + Sharp WebP)
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: myoutfit-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      TZ: ${TZ:-Europe/Madrid}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myoutfit}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-myoutfit_social}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Define JWT_ACCESS_SECRET en .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Define JWT_REFRESH_SECRET en .env}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN_DAYS: ${JWT_REFRESH_EXPIRES_IN_DAYS:-30}
+      MEDIA_ROOT: /var/lib/myoutfit/media
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-15}
+      WEBP_QUALITY: ${WEBP_QUALITY:-82}
+      EPHEMERAL_TTL_HOURS: ${EPHEMERAL_TTL_HOURS:-24}
+      GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-MyOutfit <no-reply@myoutfit.app>}
+    volumes:
+      # Volumen persistente para fotos de perfil y archivo privado de outfits (WebP)
+      - media_data:/var/lib/myoutfit/media
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ============================================================================
+  # 3. Proxy Inverso + SSL Automático (Let's Encrypt / HTTP3): Caddy 2
+  # Único contenedor expuesto a Internet (puertos 80 y 443)
+  # ============================================================================
+  caddy:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    container_name: myoutfit-caddy
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:-myoutfit.duckdns.org}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@myoutfit.duckdns.org}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend_net
+
+networks:
+  backend_net:
+    driver: bridge
+    internal: false
+
+volumes:
+  postgres_data:
+    name: myoutfit_postgres_data
+  media_data:
+    name: myoutfit_media_data
+  caddy_data:
+    name: myoutfit_caddy_data
+  caddy_config:
+    name: myoutfit_caddy_config

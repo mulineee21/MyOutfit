@@ -3,14 +3,14 @@
 [![Autor](https://img.shields.io/badge/Autor-Joel%20Molina%20(@mulineee21)-8b5cf6?style=for-the-badge&logo=github)](https://github.com/mulineee21)
 [![Licencia](https://img.shields.io/badge/Licencia-GPL%20v3%20o%20superior-blue.svg?style=for-the-badge)](LICENSE)
 [![Sitio Web Oficial](https://img.shields.io/badge/Web%20Oficial-mulineee21.github.io%2Fmyoutfit--web-ec4899?style=for-the-badge)](https://mulineee21.github.io/myoutfit-web/)
-[![Release Oficial](https://img.shields.io/badge/Release-v1.1.0-emerald.svg?style=for-the-badge&logo=android)](https://github.com/mulineee21/MyOutfit/releases/tag/v1.1.0)
+[![Release Oficial](https://img.shields.io/badge/Release-v2.0-emerald.svg?style=for-the-badge&logo=android)](https://github.com/mulineee21/MyOutfit/releases/tag/v2.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7f52ff?style=for-the-badge&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285f4?style=for-the-badge&logo=android)](https://developer.android.com/jetpack/compose)
 
-> **MyOutfit** es una aplicación moderna y nativa para Android creada por **Joel Molina**, desarrollada en **Kotlin** y **Jetpack Compose**. Integra la Inteligencia Artificial de **Google Gemini** para recomendarte qué ropa ponerte cada día, autocategorizar tus prendas, organizar tu **Lista de Deseos** con enlaces de tiendas (SHEIN, Amazon, etc.) y realizar copias de seguridad portátiles para migrar tus datos entre dispositivos.
+> **MyOutfit** es una aplicación moderna y nativa para Android creada por **Joel Molina**, desarrollada en **Kotlin** y **Jetpack Compose**. Integra la Inteligencia Artificial de **Google Gemini** para recomendarte qué ropa ponerte cada día, autocategorizar tus prendas, organizar tu **Lista de Deseos**, y en su **versión 2.0** estrena una **Red Social Efímera de Outfits 24h** con total **cumplimiento normativo europeo (RGPD y DSA)**.
 
 🌐 **Sitio Web Oficial & Demo:** [https://mulineee21.github.io/myoutfit-web/](https://mulineee21.github.io/myoutfit-web/)  
-📦 **Descarga Directa de APK (v1.1.0):** [MyOutfit-JoelMolina-v1.1.0.apk](https://github.com/mulineee21/MyOutfit/releases/download/v1.1.0/MyOutfit-JoelMolina-v1.1.0.apk)
+📦 **Descarga Directa de APK (v2.0):** [MyOutfit-JoelMolina-v2.0.apk](https://github.com/mulineee21/MyOutfit/releases/download/v2.0/MyOutfit-JoelMolina-v2.0.apk)
 
 ---
 
@@ -62,35 +62,48 @@ El código está estructurado en tres capas desacopladas:
 
 ## ✨ Características Principales
 
-1. **🛍️ Lista de Deseos Inteligente con IA (Wishlist):**
+1. **🌟 Red Social Efímera «Outfits 24h» (¡Novedad v2.0!):**
+   - Publica tu outfit diario con duración estricta de 24 horas y cuenta atrás en tiempo real.
+   - **Diseño Moderno & Elegante:** Tarjetas estilizadas en Jetpack Compose con degradados sutiles, estados de interacción suaves y botón de "Me gusta" reactivo.
+   - **Comentarios con Foto de Perfil:** Visualización rica de opiniones de la comunidad acompañadas del avatar de cada usuario.
+   - **Perfiles Públicos e Inspección:** Pulsa sobre cualquier usuario para consultar su perfil público, biografía y sus looks activos.
+   - **Notificaciones de Expiración:** Alertas automáticas para avisar al usuario cuando su publicación de 24 horas esté por concluir o haya finalizado.
+
+2. **🇪🇺 Cumplimiento Legal Europeo Total (RGPD, LOPDGDD y DSA) (¡Novedad v2.0!):**
+   - **Derecho a la Supresión (Derecho al Olvido):** El usuario puede borrar sus publicaciones y comentarios en cualquier momento de forma inmediata e irreversible tanto localmente como en el servidor.
+   - **Mecanismo de Notificación y Acción (Ley de Servicios Digitales - DSA):** Sistema de denuncia/reporte de publicaciones y comentarios con clasificación de infracciones (contenido inapropiado, spam, odio, suplantación, etc.).
+   - **Sistema de Bloqueo de Usuarios:** Capacidad de bloquear usuarios conflictivos, ocultando bidireccional e instantáneamente todas sus publicaciones e interacciones.
+   - **Portal Legal Integrado:** Acceso directo a Términos y Condiciones, Política de Privacidad de la UE y Aviso Legal desde la pantalla de perfil.
+
+3. **🛍️ Lista de Deseos Inteligente con IA (Wishlist):**
    - Agrega prendas mediante enlaces de producto (**SHEIN, Amazon, Zara, ASOS, etc.**) o de forma manual.
    - Extracción automática de metadatos: foto de alta calidad, precio, moneda y nombre del producto.
    - Análisis estilístico con Gemini IA: clasificación por tipo de prenda y etiquetas de estilo (#gótico, #deporte, #casual, #vintage, #aesthetic).
    - Filtros por tienda y estilo de moda. Enlace directo al producto ("Ver en tienda") y gestión de comprados.
 
-2. **📲 Integración Nativa con el Menú Compartir de Android:**
+4. **📲 Integración Nativa con el Menú Compartir de Android:**
    - Comparte enlaces directamente desde aplicaciones externas (SHEIN, Amazon, Chrome, etc.) hacia **MyOutfit**.
    - La app se abre directamente en la Lista de Deseos, autocompleta el enlace recibido e inicia el análisis con IA automáticamente.
 
-3. **🚪 Armario Digital con Autocategorización por IA:**
+5. **🚪 Armario Digital con Autocategorización por IA:**
    - Guarda fotos de tus prendas tomadas con la cámara o elegidas de la galería.
    - **Autocategorización asistida por IA:** Gemini Vision analiza la prenda y sugiere la categoría (de entre 14 opciones), color predominante y etiquetas de estilo.
    - **Interruptor configurable:** El usuario decide libremente si desea activar o desactivar la asistencia de IA en cualquier momento.
 
-4. **🤖 Recomendaciones de Ropa con Google Gemini IA:**
+6. **🤖 Recomendaciones de Ropa con Google Gemini IA:**
    - Selección inteligente de outfits basada en tu plan del día (oficina, gym, fiesta, etc.) y tu vibe/estilo deseado.
    - Conexión opcional con tu Tablero de Inspiración (Lookbook).
    - Consejos de estilista personalizados para cada conjunto.
    - **Motor Heurístico Local:** Motor alternativo offline para sugerencias instantáneas sin conexión a internet ni consumo de API.
 
-5. **📦 Copia de Seguridad y Restauración Completa (Backup & Restore):**
+7. **📦 Copia de Seguridad y Restauración Completa (Backup & Restore):**
    - Exporta toda tu información en un archivo comprimido portátil `.zip` para transferir tus datos fácilmente al cambiar de móvil.
    - Incluye todas las fotos reales en resolución completa y la base de datos completa con remapeo de identificadores y validación de integridad.
 
-6. **💡 Tablero de Inspiración (Lookbook):**
+8. **💡 Tablero de Inspiración (Lookbook):**
    - Guarda imágenes de referencia de moda y tendencias para que la IA aprenda de tus gustos estéticos.
 
-7. **⭐ Diario de Outfits & Favoritos:**
+9. **⭐ Diario de Outfits & Favoritos:**
    - Registro diario de qué outfit usaste para evitar repeticiones.
    - Guarda tus combinaciones favoritas para acceder a ellas en cualquier momento.
 

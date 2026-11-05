@@ -1,0 +1,34 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$DOMAIN_NAME} {
+    tls {
+        dns duckdns {$DUCKDNS_TOKEN}
+    }
+
+    # Compresión en tránsito para respuestas JSON de la API
+    encode zstd gzip
+
+    # Límite máximo de subida (fotos crudas desde cámara Android antes de convertir a WebP sin EXIF)
+    request_body {
+        max_size 15MB
+    }
+
+    # Cabeceras de seguridad y privacidad endurecidas (Art. 32 RGPD)
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"
+        -Server
+    }
+
+    # Proxy hacia el contenedor Node.js/Fastify (REST + WebSockets)
+    reverse_proxy api:3000 {
+        health_uri /api/health
+        health_interval 15s
+    }
+}

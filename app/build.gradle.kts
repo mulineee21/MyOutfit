@@ -1,8 +1,24 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
+}
+
+val localProps = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+fun resolveBuildProp(key: String, default: String = ""): String {
+    return (localProps.getProperty(key)
+        ?: project.findProperty(key)?.toString()
+        ?: System.getenv(key)
+        ?: default).trim()
 }
 
 android {
@@ -15,11 +31,14 @@ android {
         applicationId = "com.joelmolina.myoutfit"
         minSdk = 30
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "2.0"
 
         buildConfigField("String", "APP_AUTHOR", "\"Joel Molina\"")
-        buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: System.getenv("GEMINI_API_KEY") ?: ""}\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"${resolveBuildProp("GEMINI_API_KEY")}\"")
+        buildConfigField("String", "SOCIAL_API_BASE_URL", "\"${resolveBuildProp("SOCIAL_API_BASE_URL", "https://myoutfit.duckdns.org")}\"")
+        buildConfigField("String", "SOCIAL_LAN_FALLBACK_IP", "\"${resolveBuildProp("SOCIAL_LAN_FALLBACK_IP", "192.168.1.159")}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${resolveBuildProp("GOOGLE_WEB_CLIENT_ID", "828352249255-hcgnjqc81ulgl06il3uq1elaqdhlm9it.apps.googleusercontent.com")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,6 +56,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            val keystoreFile = rootProject.file("keystore/myoutfit-joelmolina.jks")
+            if (keystoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
             optimization {
@@ -93,6 +118,9 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
     implementation(libs.google.generativeai)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.junit)
